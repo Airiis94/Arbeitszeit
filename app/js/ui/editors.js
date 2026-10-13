@@ -1,0 +1,259 @@
+// Bearbeitungsdialoge für Arbeitsphasen, Pausen, Tagesangaben, Tätigkeiten und Korrekturen.
+
+import { h, field, formDialog, toast } from './dom.js';
+import {
+  localTimestamp, timeOfDay, dayKey, parseDuration, fmtDuration, fmtDate, parseTime, todayKey, isValidDayKey,
+} from '../core/time.js';
+import { newInterval, touch, DAY_TYPES, INTENSITIES } from '../core/model.js';
+import { ValidationError } from '../db/repo.js';
+
+const err = (msg) => new ValidationError([msg]);
+
+function timeInput(name, value, attrs = {}) {
+  return h('input', { type: 'time', name, value: value || '', step: 60, required: attrs.required, class: 'input' });
+}
+
+function reasonField() {
+  return field('Grund der Änderung (optional)', h('input', { name: 'reason', type: 'text', class: 'input', maxlength: 200, placeholder: 'z. B. Feierabend vergessen', 'data-nofocus': true }));
+}
+
+/** Uhrzeit einer Pause auf den richtigen Kalendertag legen (Nachtschicht: Pause nach Mitternacht). */
+export function resolveBreakTime(day, hhmm, sessions) {
+  const t0 = localTimestamp(day, hhmm);
+  const t1 = localTimestamp(day, hhmm, 1);
+  const inside = (t) => sessions.some((s) => s.start != null && t >= s.start && (s.end == null || t <= s.end));
+  if (!inside(t0) && inside(t1)) return t1;
+  return t0;
+}
+
+/** Undo-Toast nach einer Änderung. */
+export function undoToast(app, message, changes) {
+  toast(message, {
+    type: 'success',
+    action: changes?.length ? {
+      label: 'Rückgängig',
+      run: async () => {
+        try {
+          await app.repo.undo(changes);
+          toast('Rückgängig gemacht.');
+        } catch (e) { app.error(e); }
+      },
+    } : null,
+  });
+}
+
+// ---------- Arbeitsphase ----------
+
+export function editWorkDialog(app, day, rec = null) {
+  const isNew = !rec;
+  const endDay = rec?.end ? dayKey(rec.end) : day;
+  return formDialog({
+    title: isNew ? `Arbeitsphase hinzufügen – ${fmtDate(day)}` : `Arbeitsphase bearbeiten – ${fmtDate(day)}`,
+    build: (form) => {
+      const start = timeInput('start', rec ? timeOfDay(rec.start) : '', { required: true });
+      const end = timeInput('end', rec?.end ? timeOfDay(rec.end) : '');
+      const next = h('input', { type: 'checkbox', name: 'nextDay', checked: endDay !== day });
+      const autoNext = () => {
+        const s = parseTime(start.value);
+        const e = parseTime(end.value);
+        if (s && e) next.checked = e.h * 60 + e.min < s.h * 60 + s.min;
+      };
+      start.addEventListener('change', autoNext);
+      end.addEventListener('change', autoNext);
+      return [
+        h('div', { class: 'row-2' }, field('Beginn', start), field('Ende', end, 'leer = läuft noch')),
+        h('label', { class: 'check' }, next, ' Ende am Folgetag (über Mitternacht)'),
+        reasonField(),
+      ];
+    },
+    onSubmit: async (form) => {
+      const f = new FormData(form);
+      const s = f.get('start');
+      const e = f.get('end');
+      if (!parseTime(s)) throw err('Bitte einen Beginn angeben.');
+      const start = localTimestamp(day, s);
+      const end = e ? localTimestamp(day, e, f.get('nextDay') ? 1 : 0) : null;
+      if (end != null && end < start) throw err('Das Ende liegt vor dem Beginn. Für Arbeit über Mitternacht „Ende am Folgetag“ ankreuzen.');
+      const now = Date.now();
+      const next = isNew ? newInterval({ kind: 'work', day, start, end, source: 'manual' }, now)
+        : touch(rec, { start, end }, now);
+      const res = await app.repo.saveIntervals([next], { reason: f.get('reason'), now });
+      undoToast(app, isNew ? 'Arbeitsphase hinzugefügt.' : 'Arbeitsphase geändert.', res.changes);
+    },
+  });
+}
+
+// ---------- Pause ----------
+
+const PRESETS = [15, 30, 45, 60];
+
+export function editBreakDialog(app, day, rec = null, sessions = []) {
+  const isNew = !rec;
+  const initialMode = rec ? (rec.start != null ? 'times' : 'duration') : 'duration';
+  return formDialog({
+    title: isNew ? `Pause eintragen – ${fmtDate(day)}` : `Pause bearbeiten – ${fmtDate(day)}`,
+    build: () => {
+      const dur = h('input', { name: 'duration', type: 'text', inputmode: 'numeric', class: 'input', value: rec?.durationMin ? String(rec.durationMin) : '', placeholder: 'Minuten, z. B. 30 oder 1:15' });
+      const chips = h('div', { class: 'chips' }, PRESETS.map((m) => h('button', {
+        type: 'button', class: 'chip', onclick: () => { dur.value = String(m); },
+      }, `${m} min`)));
+      const durBox = h('div', null, chips, field('Dauer', dur));
+      const startT = timeInput('start', rec?.start ? timeOfDay(rec.start) : '');
+      const endT = timeInput('end', rec?.end ? timeOfDay(rec.end) : '');
+      const timesBox = h('div', { class: 'row-2' }, field('Beginn', startT), field('Ende', endT, 'leer = läuft noch'));
+      const modeSel = h('div', { class: 'segmented' },
+        h('label', null, h('input', { type: 'radio', name: 'mode', value: 'duration', checked: initialMode === 'duration' }), ' Nur Dauer'),
+        h('label', null, h('input', { type: 'radio', name: 'mode', value: 'times', checked: initialMode === 'times' }), ' Von – bis'));
+      const update = () => {
+        const m = modeSel.querySelector('input:checked').value;
+        durBox.hidden = m !== 'duration';
+        timesBox.hidden = m !== 'times';
+      };
+      modeSel.addEventListener('change', update);
+      update();
+      return [modeSel, durBox, timesBox, reasonField()];
+    },
+    onSubmit: async (form) => {
+      const f = new FormData(form);
+      const now = Date.now();
+      let fields;
+      if (f.get('mode') === 'duration') {
+        const min = parseDuration(f.get('duration'));
+        if (!min || min <= 0) throw err('Bitte eine gültige Dauer angeben (z. B. 30 oder 1:15).');
+        fields = { start: null, end: null, durationMin: min };
+      } else {
+        const s = f.get('start');
+        if (!parseTime(s)) throw err('Bitte einen Pausenbeginn angeben.');
+        const start = resolveBreakTime(day, s, sessions);
+        let end = null;
+        if (f.get('end')) {
+          end = resolveBreakTime(day, f.get('end'), sessions);
+          if (end < start) end = localTimestamp(dayKey(start), f.get('end'), 1);
+        }
+        fields = { start, end, durationMin: null };
+      }
+      const next = isNew ? newInterval({ kind: 'break', day, source: 'manual', ...fields }, now) : touch(rec, fields, now);
+      const res = await app.repo.saveIntervals([next], { reason: f.get('reason'), now });
+      undoToast(app, isNew ? 'Pause eingetragen.' : 'Pause geändert.', res.changes);
+    },
+  });
+}
+
+/** Pause mit fester Dauer ohne Dialog nachtragen (Schnellwahl). */
+export async function quickBreak(app, day, minutes) {
+  try {
+    const rec = newInterval({ kind: 'break', day, durationMin: minutes, source: 'manual' });
+    const res = await app.repo.saveIntervals([rec], { reason: 'Schnellwahl' });
+    undoToast(app, `Pause ${minutes} min für ${fmtDate(day, { year: false })} eingetragen.`, res.changes);
+  } catch (e) { app.error(e); }
+}
+
+export async function deleteIntervalFlow(app, rec) {
+  const label = rec.kind === 'work' ? 'Arbeitsphase' : 'Pause';
+  const reason = await formDialog({
+    title: `${label} löschen?`,
+    submitText: 'Löschen',
+    danger: true,
+    build: () => [
+      h('p', null, rec.start != null
+        ? `${label} ${timeOfDay(rec.start)}–${rec.end ? timeOfDay(rec.end) : '…'} wird gelöscht.`
+        : `${label} (${fmtDuration(rec.durationMin)}) wird gelöscht.`),
+      reasonField(),
+    ],
+    onSubmit: (form) => new FormData(form).get('reason') || '',
+  });
+  if (reason === null) return;
+  try {
+    const res = await app.repo.deleteInterval(rec.id, { reason });
+    undoToast(app, `${label} gelöscht.`, res.changes);
+  } catch (e) { app.error(e); }
+}
+
+// ---------- Tagesangaben ----------
+
+export function editDayInfoDialog(app, day, info, defaultTarget) {
+  return formDialog({
+    title: `Tagesangaben – ${fmtDate(day)}`,
+    build: () => [
+      field('Tagesart', h('select', { name: 'dayType', class: 'input' },
+        Object.entries(DAY_TYPES).map(([k, v]) => h('option', { value: k, selected: (info?.dayType || 'arbeit') === k }, v.label))),
+      'Urlaub, Krank, Feiertag und Frei setzen das Soll auf 0.'),
+      field('Individuelle Sollzeit (h:mm)', h('input', {
+        name: 'target', type: 'text', class: 'input', inputmode: 'numeric',
+        value: Number.isInteger(info?.targetOverrideMin) ? fmtDuration(info.targetOverrideMin) : '',
+        placeholder: `Standard: ${fmtDuration(defaultTarget)}`,
+      }), 'Leer lassen für die Standard-Sollzeit.'),
+      field('Notiz', h('textarea', { name: 'note', class: 'input', rows: 2, maxlength: 500 }, info?.note || '')),
+    ],
+    onSubmit: async (form) => {
+      const f = new FormData(form);
+      const t = (f.get('target') || '').trim();
+      let targetOverrideMin = null;
+      if (t) {
+        targetOverrideMin = parseDuration(t);
+        if (targetOverrideMin == null || targetOverrideMin < 0 || targetOverrideMin > 1440) throw err('Ungültige Sollzeit.');
+      }
+      await app.repo.saveDayInfo(day, { dayType: f.get('dayType'), targetOverrideMin, note: f.get('note') || '' });
+      toast('Tagesangaben gespeichert.', { type: 'success' });
+    },
+  });
+}
+
+// ---------- Tätigkeiten ----------
+
+export function editActivityDialog(app, day, rec = null, categories = []) {
+  const listId = 'cat-list';
+  return formDialog({
+    title: rec ? 'Tätigkeit bearbeiten' : `Tätigkeit erfassen – ${fmtDate(day)}`,
+    build: () => [
+      field('Bezeichnung', h('input', { name: 'title', type: 'text', class: 'input', required: true, maxlength: 120, value: rec?.title || '' })),
+      field('Dauer', h('input', { name: 'duration', type: 'text', class: 'input', inputmode: 'decimal', value: rec ? fmtDuration(rec.minutes) : '', placeholder: 'z. B. 90, 1:30 oder 1,5h' })),
+      h('div', { class: 'row-2' },
+        field('Intensität', h('select', { name: 'intensity', class: 'input' },
+          h('option', { value: '' }, '—'),
+          INTENSITIES.map((i) => h('option', { value: i, selected: rec?.intensity === i }, i[0].toUpperCase() + i.slice(1))))),
+        field('Kategorie', h('input', { name: 'category', type: 'text', class: 'input', list: listId, maxlength: 60, value: rec?.category || '' }))),
+      h('datalist', { id: listId }, categories.map((c) => h('option', { value: c }))),
+      field('Beschreibung (optional)', h('textarea', { name: 'description', class: 'input', rows: 3, maxlength: 2000 }, rec?.description || '')),
+    ],
+    onSubmit: async (form) => {
+      const f = new FormData(form);
+      const minutes = parseDuration(f.get('duration'));
+      if (!minutes || minutes <= 0) throw err('Bitte eine gültige Dauer angeben (z. B. 90, 1:30 oder 1,5h).');
+      const res = await app.repo.saveActivity({
+        ...(rec ? { id: rec.id } : {}),
+        day,
+        title: f.get('title'),
+        description: f.get('description') || '',
+        minutes,
+        intensity: f.get('intensity') || null,
+        category: (f.get('category') || '').trim() || null,
+      });
+      undoToast(app, rec ? 'Tätigkeit geändert.' : 'Tätigkeit gespeichert.', res.changes);
+    },
+  });
+}
+
+// ---------- Korrekturen ----------
+
+export function editCorrectionDialog(app) {
+  return formDialog({
+    title: 'Zeitkonto korrigieren',
+    build: () => [
+      h('p', { class: 'muted' }, 'Eine Korrektur verändert den Saldo direkt (ohne Rundung) und wird mit Begründung protokolliert.'),
+      h('div', { class: 'row-2' },
+        field('Datum', h('input', { name: 'day', type: 'date', class: 'input', value: todayKey(), required: true })),
+        field('Minuten (+/−)', h('input', { name: 'minutes', type: 'text', class: 'input', inputmode: 'text', placeholder: 'z. B. +1:30 oder -45', required: true }))),
+      field('Begründung', h('input', { name: 'reason', type: 'text', class: 'input', required: true, maxlength: 300, placeholder: 'z. B. Überstunden ausgezahlt' })),
+    ],
+    onSubmit: async (form) => {
+      const f = new FormData(form);
+      const minutes = parseDuration(f.get('minutes'));
+      if (!minutes) throw err('Bitte Minuten angeben, z. B. +1:30 oder -45.');
+      if (!isValidDayKey(f.get('day'))) throw err('Bitte ein gültiges Datum angeben.');
+      await app.repo.saveCorrection({ day: f.get('day'), minutes, reason: f.get('reason') || '' });
+      toast('Korrektur gespeichert.', { type: 'success' });
+    },
+  });
+}
+

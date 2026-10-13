@@ -1,0 +1,52 @@
+# Testet die App und stellt sie auf GitHub Pages bereit (HTTPS – Voraussetzung für Installation und Offline-Betrieb).
+# Einmalig nötig: Repository → Settings → Pages → „Build and deployment“ → Source: „GitHub Actions“.
+name: Tests und Bereitstellung
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit-Tests (Zeitkonto, Zustandsautomat, Backup, CSV, Service Worker)
+        run: npm test
+      - name: Playwright installieren
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Browser-Tests (IndexedDB, Neuladen, Import/Export, Offline)
+        run: npm run test:e2e
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app
+      - id: deployment
+        uses: actions/deploy-pages@v4

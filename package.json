@@ -1,0 +1,17 @@
+{
+  "name": "arbeitszeit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private, offlinefähige Arbeitszeiterfassung als Progressive Web App",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "test": "TZ=Europe/Berlin node --test tests/unit/*.test.js",
+    "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.test.js",
+    "icons": "node scripts/make-icons.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

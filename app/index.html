@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Arbeitszeit</title>
+  <meta name="description" content="Private, offlinefähige Arbeitszeiterfassung. Alle Daten bleiben auf dem Gerät.">
+  <meta name="theme-color" content="#1f5f8b" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1720" media="(prefers-color-scheme: dark)">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⏱ Arbeitszeit</span>
+    <span class="offline-flag" title="Keine Internetverbindung – die App funktioniert trotzdem.">offline</span>
+  </header>
+  <main id="view" class="main" aria-live="polite">
+    <noscript><p class="notice notice-error">Diese App benötigt JavaScript.</p></noscript>
+    <p class="muted center">Lade …</p>
+  </main>
+  <nav class="bottom-nav" aria-label="Hauptnavigation">
+    <a href="#/heute" data-nav="heute"><span class="nav-ico" aria-hidden="true">⏱</span><span>Heute</span></a>
+    <a href="#/kalender" data-nav="kalender"><span class="nav-ico" aria-hidden="true">📅</span><span>Kalender</span></a>
+    <a href="#/taetigkeiten" data-nav="taetigkeiten"><span class="nav-ico" aria-hidden="true">📝</span><span>Tätigkeiten</span></a>
+    <a href="#/konto" data-nav="konto"><span class="nav-ico" aria-hidden="true">⚖</span><span>Zeitkonto</span></a>
+    <a href="#/einstellungen" data-nav="einstellungen"><span class="nav-ico" aria-hidden="true">⚙</span><span>Einstellungen</span></a>
+  </nav>
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
+</body>
+</html>
