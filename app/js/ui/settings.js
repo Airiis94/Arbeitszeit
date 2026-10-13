@@ -6,11 +6,12 @@ import { daysToCsv, activitiesToCsv } from '../core/csv.js';
 import { ROUNDING_MODES, CARRY_RULES } from '../core/rounding.js';
 import {
   fmtDuration, parseDuration, fmtDateTime, fmtDate, todayKey, isValidDayKey, WEEKDAYS_LONG, monthKey,
-  firstOfMonth, lastOfMonth,
+  firstOfMonth, lastOfMonth, startOfWeek, addDays,
 } from '../core/time.js';
+import { validateScheduleEntry, plannedMinutes } from '../core/schedule.js';
 import { APP_VERSION, SCHEMA_VERSION, uuid } from '../core/model.js';
 import { backupState } from './common.js';
-import { exportBackup, shareBackup, importFlow, canShareFiles } from './backup.js';
+import { exportBackup, shareBackup, importFlow, canShareFiles, exportReport } from './backup.js';
 import { ValidationError } from '../db/repo.js';
 
 const err = (m) => new ValidationError([m]);
@@ -109,49 +110,121 @@ export async function renderSettings(app) {
       },
     }, 'Dauerhaften Speicher anfordern') : null);
 
-  // ----- Sollzeit -----
+  // ----- Arbeitszeitplan (Sollzeit) -----
   const rules = [...settings.targetRules].sort((a, b) => b.validFrom.localeCompare(a.validFrom));
   const current = rules.find((r) => r.validFrom <= today) || rules[rules.length - 1];
-  const targetInputs = WEEKDAYS_LONG.map((_, i) => h('input', { type: 'text', class: 'input input-short', inputmode: 'numeric', value: fmtDuration(current.minutes[i]), 'aria-label': WEEKDAYS_LONG[i] }));
+  // Regeln ohne Plan (aus älteren Versionen mit eigenen Stunden) als Vorschlag in einen Plan übersetzen
+  const initialEntry = (i) => {
+    if (Array.isArray(current.schedule)) return current.schedule[i];
+    const m = current.minutes[i];
+    if (!m) return null;
+    const startMin = 8 * 60;
+    const end = startMin + m + 30;
+    const hhmm = (x) => `${String(Math.floor(x / 60) % 24).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+    return { start: '08:00', end: hhmm(end), breakStart: '12:00', breakEnd: '12:30' };
+  };
+  const timeInput = (value, label) => h('input', { type: 'time', class: 'input', value: value || '', step: 60, 'aria-label': label });
+  const planRows = WEEKDAYS_LONG.map((w, i) => {
+    const e = initialEntry(i);
+    const active = h('input', { type: 'checkbox', checked: !!e, 'aria-label': `${w} ist Arbeitstag` });
+    const start = timeInput(e?.start, `${w} Beginn`);
+    const end = timeInput(e?.end, `${w} Ende`);
+    const bs = timeInput(e?.breakStart, `${w} Pause von`);
+    const be = timeInput(e?.breakEnd, `${w} Pause bis`);
+    const soll = h('span', { class: 'num plan-soll' });
+    const fields = h('div', { class: 'plan-fields' },
+      field('Beginn', start), field('Ende', end), field('Pause von', bs), field('Pause bis', be));
+    const read = () => (active.checked ? { start: start.value, end: end.value, breakStart: bs.value || null, breakEnd: be.value || null } : null);
+    const update = () => {
+      fields.hidden = !active.checked;
+      const entry = read();
+      const errs = validateScheduleEntry(entry);
+      soll.textContent = !entry ? 'frei' : errs.length ? errs[0] : `Soll ${fmtDuration(plannedMinutes(entry))}`;
+      soll.classList.toggle('neg', !!(entry && errs.length));
+      sumLabel.textContent = fmtDuration(planRows.reduce((sum, r) => sum + plannedMinutes(r.read()), 0));
+    };
+    [active, start, end, bs, be].forEach((el) => el.addEventListener('input', update));
+    const el = h('div', { class: 'plan-row', 'data-testid': `plan-${i}` },
+      h('div', { class: 'plan-head' }, h('label', { class: 'check' }, active, ` ${w}`), soll),
+      fields);
+    return { el, read, update, name: w };
+  });
   const validFrom = h('input', { type: 'date', class: 'input', value: today });
-  const weekSum = () => targetInputs.reduce((s, inp) => s + (parseDuration(inp.value) || 0), 0);
-  const sumLabel = h('span', { class: 'num' }, fmtDuration(weekSum()));
-  targetInputs.forEach((inp) => inp.addEventListener('input', () => { sumLabel.textContent = fmtDuration(weekSum()); }));
+  const sumLabel = h('span', { class: 'num' }, '');
 
   const saveTargets = async () => {
     try {
-      const minutes = targetInputs.map((inp, i) => {
-        const m = parseDuration(inp.value || '0');
-        if (m == null || m < 0 || m > 1440) throw err(`Ungültige Sollzeit für ${WEEKDAYS_LONG[i]}.`);
-        return m;
+      const schedule = planRows.map((r) => {
+        const entry = r.read();
+        const errs = validateScheduleEntry(entry);
+        if (errs.length) throw err(`${r.name}: ${errs[0]}`);
+        return entry;
       });
+      const minutes = schedule.map(plannedMinutes);
       if (!isValidDayKey(validFrom.value)) throw err('Bitte ein gültiges „Gültig ab“-Datum angeben.');
       const others = settings.targetRules.filter((r) => r.validFrom !== validFrom.value);
       const ok = await confirmDialog({
-        title: 'Sollzeit speichern?',
-        message: `Die neue Sollzeit (Woche ${fmtDuration(minutes.reduce((a, b) => a + b, 0))}) gilt ab ${fmtDate(validFrom.value)}. Frühere Tage behalten ihre bisherige Sollzeit.`,
+        title: 'Arbeitszeitplan speichern?',
+        message: `Der Plan (Woche ${fmtDuration(minutes.reduce((x, y) => x + y, 0))}) gilt ab ${fmtDate(validFrom.value)}. Frühere Tage behalten ihren bisherigen Plan.`,
         confirmText: 'Speichern',
       });
       if (!ok) return;
-      await save({ ...settings, targetRules: [...others, { id: uuid(), validFrom: validFrom.value, minutes }] }, 'Sollzeit gespeichert.');
+      await save({ ...settings, targetRules: [...others, { id: uuid(), validFrom: validFrom.value, minutes, schedule }] }, 'Arbeitszeitplan gespeichert.');
     } catch (e) { app.error(e); }
   };
 
-  const targetSection = section('Sollarbeitszeit',
-    h('div', { class: 'target-grid' }, WEEKDAYS_LONG.map((w, i) => field(w, targetInputs[i]))),
+  const ruleText = (r) => (Array.isArray(r.schedule)
+    ? r.schedule.map((e, i) => `${WEEKDAYS_LONG[i].slice(0, 2)} ${e ? `${e.start}–${e.end}` : 'frei'}`).join(' · ')
+    : r.minutes.map(fmtDuration).join(' · '));
+
+  const targetSection = section('Arbeitszeitplan (Sollzeit)',
+    h('p', { class: 'muted small' }, 'Beginn, Ende und feste Pause je Wochentag. Daraus ergibt sich die Sollzeit, und jede Abweichung (z. B. 2 Minuten zu spät) wird sofort im Verrechnungskonto gezählt.'),
+    h('div', { class: 'plan-list' }, planRows.map((r) => r.el)),
     h('p', null, 'Wochensumme: ', sumLabel),
     field('Gültig ab', validFrom, 'Änderungen gelten ab diesem Datum; frühere Tage bleiben unverändert.'),
-    h('button', { type: 'button', class: 'btn btn-primary', onclick: saveTargets }, 'Sollzeit speichern'),
+    h('button', { type: 'button', class: 'btn btn-primary', 'data-testid': 'save-plan', onclick: saveTargets }, 'Arbeitszeitplan speichern'),
     rules.length > 1 ? h('details', null, h('summary', null, `Verlauf (${rules.length} Regeln)`),
       h('ul', { class: 'small' }, rules.map((r) => h('li', null,
-        `ab ${fmtDate(r.validFrom)}: ${r.minutes.map(fmtDuration).join(' · ')} `,
-        rules.length > 1 ? h('button', {
+        `ab ${fmtDate(r.validFrom)}: ${ruleText(r)} `,
+        h('button', {
           type: 'button', class: 'icon-btn', 'aria-label': 'Regel löschen', onclick: async () => {
-            if (await confirmDialog({ title: 'Regel löschen?', message: `Sollzeit-Regel ab ${fmtDate(r.validFrom)} löschen? Betroffene Tage werden neu berechnet.`, confirmText: 'Löschen', danger: true })) {
+            if (await confirmDialog({ title: 'Regel löschen?', message: `Regel ab ${fmtDate(r.validFrom)} löschen? Betroffene Tage werden neu berechnet.`, confirmText: 'Löschen', danger: true })) {
               await save({ ...settings, targetRules: settings.targetRules.filter((x) => x.id !== r.id) });
             }
           },
-        }, '🗑') : null)))) : null);
+        }, '🗑'))))) : null);
+  planRows.forEach((r) => r.update());
+
+  // ----- Ausbildungsnachweis (Excel) -----
+  const report = settings.report || {};
+  const repName = h('input', { type: 'text', class: 'input', value: report.name || '', maxlength: 80, autocomplete: 'name' });
+  const repStart = h('input', { type: 'date', class: 'input', value: report.trainingStart || '' });
+  const weekStart = startOfWeek(today);
+  const repFrom = h('input', { type: 'date', class: 'input', value: weekStart, 'data-testid': 'report-from' });
+  const repTo = h('input', { type: 'date', class: 'input', value: addDays(weekStart, 6), 'data-testid': 'report-to' });
+  const setRange = (from, to) => { repFrom.value = from; repTo.value = to; };
+  const reportSection = section('Ausbildungsnachweis (Excel)',
+    h('p', { class: 'muted small' }, 'Erstellt eine Excel-Datei im Layout des Ausbildungsnachweises: ein Blatt pro Woche mit Arbeitszeit, Pausen und Tätigkeiten (Einzelstunden), Gesamtstunden = Netto-Arbeitszeit, Abteilung = Kategorie der Tätigkeit.'),
+    h('div', { class: 'row-2' },
+      field('Name', repName),
+      field('Ausbildungsbeginn', repStart, 'für Nachweis-Nr. und Ausbildungsjahr')),
+    h('button', {
+      type: 'button', class: 'btn', onclick: async () => {
+        if (repStart.value && !isValidDayKey(repStart.value)) { app.error(err('Ungültiger Ausbildungsbeginn.')); return; }
+        await save({ ...settings, report: { name: repName.value.trim(), trainingStart: repStart.value || null } }, 'Angaben gespeichert.');
+      },
+    }, 'Angaben speichern'),
+    h('h3', null, 'Zeitraum'),
+    h('div', { class: 'chips' },
+      h('button', { type: 'button', class: 'chip', onclick: () => setRange(weekStart, addDays(weekStart, 6)) }, 'Diese Woche'),
+      h('button', { type: 'button', class: 'chip', onclick: () => setRange(addDays(weekStart, -7), addDays(weekStart, -1)) }, 'Letzte Woche'),
+      h('button', { type: 'button', class: 'chip', onclick: () => setRange(firstOfMonth(monthKey(today)), lastOfMonth(monthKey(today))) }, 'Dieser Monat')),
+    h('div', { class: 'row-2' }, field('von', repFrom), field('bis', repTo)),
+    h('button', {
+      type: 'button', class: 'btn btn-primary btn-block', 'data-testid': 'export-report', onclick: () => {
+        exportReport(app, data, repFrom.value, repTo.value, { name: repName.value.trim(), trainingStart: repStart.value || null }).catch(app.error);
+      },
+    }, '⬇ Ausbildungsnachweis herunterladen (Excel)'));
 
   // ----- Zeitkonto -----
   const accountSection = section('Zeitkonto und Verrechnung',
@@ -232,7 +305,7 @@ export async function renderSettings(app) {
 
   return h('section', { class: 'view view-settings' },
     h('a', { class: 'btn btn-block', href: '#/hilfe' }, '❓ Hilfe & Installationsanleitung'),
-    backupSection, storageSection, targetSection, accountSection, themeSection, dangerSection,
+    backupSection, reportSection, storageSection, targetSection, accountSection, themeSection, dangerSection,
     h('p', { class: 'muted small center' }, `Arbeitszeit v${APP_VERSION} · Datenformat ${SCHEMA_VERSION} · Gerät ${String(meta.deviceId || '').slice(0, 8)}`,
       h('br'), 'Keine Werbung, kein Tracking, keine Server – alle Daten bleiben auf diesem Gerät.'));
 }

@@ -105,8 +105,8 @@ test('Arbeitstag mit wenigen Klicks erfassen; Zeitkonto mit Viertelstunden-Rest'
   assert.equal(await text('net'), '8:10');
   assert.equal(await text('breaks'), '0:30');
   assert.equal(await text('diff'), '+0:10');
-  // 8:10 netto → 8:00 angerechnet, 0:10 Rest → Saldo 0:00
-  assert.equal(await text('balance'), '0:00');
+  // Verrechnungskonto minutengenau +0:10; Zeitkonto: 8:10 netto → 8:00 angerechnet, 0:10 Rest → Saldo 0:00
+  assert.equal(await text('balance'), '+0:10');
   await page.goto(`${base}#/konto`);
   await page.waitForSelector('[data-testid=account-balance]');
   assert.equal(await text('account-balance'), '0:00');
@@ -433,4 +433,88 @@ test('Kein horizontaler Überlauf auf kleinen Handys (360 px)', async () => {
   await page.waitForSelector('[data-testid=btn-start]');
   const box = await page.locator('[data-testid=btn-start]').boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= 360);
+});
+
+// ---------- Verrechnungskonto gegen den Arbeitszeitplan & Ausbildungsnachweis ----------
+
+test('Verrechnungskonto: 08:47 statt 08:45 → −0:02, 2 Minuten länger → ±0', async () => {
+  // Standardplan Mo–Fr 08:45–17:15, Pause 12:00–12:30
+  await setTime(t(DAY, '08:47'));
+  await rerender();
+  assert.equal(await text('diff'), '−0:02'); // noch nicht eingestempelt, Plan läuft seit 08:45
+  await click('btn-start');
+  await waitStatus('Arbeit läuft');
+  assert.equal(await text('diff'), '−0:02');
+  assert.equal(await text('balance'), '−0:02');
+  assert.equal(await text('even-out'), '17:17');
+  // Mittags: kein „−5 Stunden“ mehr gegen das volle Tagessoll
+  await setTime(t(DAY, '11:47'));
+  await rerender();
+  assert.equal(await text('diff'), '−0:02');
+  await setTime(t(DAY, '12:00'));
+  await click('btn-pause');
+  await waitStatus('Pause läuft');
+  await setTime(t(DAY, '12:30'));
+  await click('btn-resume');
+  await waitStatus('Arbeit läuft');
+  await setTime(t(DAY, '17:17'));
+  await click('btn-end');
+  await waitStatus('Nicht eingestempelt');
+  assert.equal(await text('diff'), '0:00');
+  assert.equal(await text('balance'), '0:00');
+  // Aufschlüsselung in der Tagesansicht
+  await page.goto(`${base}#/tag/${DAY}`);
+  await page.waitForSelector('[data-testid=deviation]');
+  const rows = await page.$$eval('[data-testid=deviation] tr', (trs) => trs.map((tr) => tr.textContent));
+  assert.ok(rows.some((r) => r.includes('Beginn 08:47 statt 08:45') && r.includes('−0:02')), rows.join(' | '));
+  assert.ok(rows.some((r) => r.includes('Ende 17:17 statt 17:15') && r.includes('+0:02')), rows.join(' | '));
+});
+
+test('Arbeitszeitplan in den Einstellungen ändern', async () => {
+  await page.goto(`${base}#/einstellungen`);
+  await page.waitForSelector('[data-testid=plan-0]');
+  await page.fill('[data-testid=plan-0] input[aria-label="Montag Beginn"]', '07:00');
+  await page.fill('[data-testid=plan-0] input[aria-label="Montag Ende"]', '15:30');
+  await page.fill('[data-testid=plan-0] input[aria-label="Montag Pause von"]', '12:00');
+  await page.fill('[data-testid=plan-0] input[aria-label="Montag Pause bis"]', '12:30');
+  assert.match(await page.textContent('[data-testid=plan-0] .plan-soll'), /Soll 8:00/);
+  await click('save-plan');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  const rules = await page.evaluate(async () => (await window.__app.repo.loadAll()).settings.targetRules);
+  const latest = rules[rules.length - 1];
+  assert.deepEqual(latest.schedule[0], { start: '07:00', end: '15:30', breakStart: '12:00', breakEnd: '12:30' });
+  assert.equal(latest.minutes[0], 480);
+});
+
+async function readXlsx(download) {
+  const dir = await mkdtemp(join(tmpdir(), 'az-'));
+  const file = join(dir, download.suggestedFilename());
+  await download.saveAs(file);
+  return { name: download.suggestedFilename(), bytes: await readFile(file) };
+}
+
+test('Ausbildungsnachweis als Excel aus der Wochenansicht und den Einstellungen', async () => {
+  await workday();
+  await page.evaluate(async () => {
+    await window.__app.repo.saveActivity({ day: '2026-03-02', title: 'Löten', minutes: 240, intensity: null, category: 'Werkstatt' });
+  });
+  await page.goto(`${base}#/kalender/woche/${DAY}`);
+  const [dl] = await Promise.all([page.waitForEvent('download'), click('week-report')]);
+  const { name, bytes } = await readXlsx(dl);
+  assert.equal(name, 'Ausbildungsnachweis_KW10-2026.xlsx');
+  assert.equal(bytes.subarray(0, 2).toString(), 'PK');
+  const text = bytes.toString('utf8');
+  assert.match(text, /<sheet name="KW10"/);
+  assert.match(text, /Arbeitszeit 08:00–16:40, Pause 0:30/);
+  assert.match(text, /Löten/);
+  assert.match(text, /Werkstatt/);
+
+  await page.goto(`${base}#/einstellungen`);
+  await page.fill('[data-testid=report-from]', '2026-02-23');
+  await page.fill('[data-testid=report-to]', '2026-03-08');
+  const [dl2] = await Promise.all([page.waitForEvent('download'), click('export-report')]);
+  const r2 = await readXlsx(dl2);
+  assert.equal(r2.name, 'Ausbildungsnachweis_KW09-bis-KW10-2026.xlsx');
+  assert.match(r2.bytes.toString('utf8'), /<sheet name="KW09"[^>]*\/><sheet name="KW10"/);
 });

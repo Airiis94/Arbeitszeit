@@ -331,7 +331,7 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
   padding: 8px 10px;
   min-width: 0;
 }
-.stats .stat:last-child { grid-column: 1 / -1; }
+.stats .stat.wide { grid-column: 1 / -1; }
 .stat-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
 .stat-value { font-size: 1.45rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .stat-sub { font-size: 0.8rem; color: var(--muted); }
@@ -454,6 +454,14 @@ tr.clickable:active { background: var(--surface-2); }
 .target-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 12px; }
 .stack { display: flex; flex-direction: column; gap: 4px; }
 
+.plan-list { display: flex; flex-direction: column; gap: 6px; }
+.plan-row { border: 1px solid var(--border); border-radius: 10px; padding: 4px 10px; }
+.plan-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.plan-head .check { padding: 4px 0; font-weight: 600; }
+.plan-soll { font-size: 0.85rem; color: var(--muted); text-align: right; }
+.plan-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.plan-fields .field { margin: 4px 0; }
+
 /* ---------- Formulare ---------- */
 
 .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; min-width: 0; }
@@ -553,7 +561,6 @@ textarea.input { min-height: 80px; resize: vertical; }
 
 @media (min-width: 640px) {
   .stats { grid-template-columns: repeat(3, 1fr); }
-  .stats .stat:last-child { grid-column: auto; }
   .target-grid { grid-template-columns: repeat(4, 1fr); }
   .cal-cell { min-height: 80px; }
 }

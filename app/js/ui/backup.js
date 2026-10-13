@@ -4,6 +4,9 @@ import { h, formDialog, toast, downloadFile, pickFile, readFileAsText } from './
 import { buildBackup, parseBackup, backupSummary } from '../core/backup-format.js';
 import { fmtDateTime, todayKey, timeOfDay } from '../core/time.js';
 import { COLLECTIONS } from '../core/model.js';
+import { buildNachweisXlsx, weeksInRange } from '../core/nachweis.js';
+import { isValidDayKey, isoWeek } from '../core/time.js';
+import { ValidationError } from '../db/repo.js';
 
 function fileName(now = Date.now()) {
   return `arbeitszeit-sicherung-${todayKey(now)}-${timeOfDay(now).replace(':', '')}.json`;
@@ -113,4 +116,20 @@ export async function importFlow(app) {
       }
     },
   });
+}
+
+export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Ausbildungsnachweis als Excel-Datei (ein Blatt pro Woche) herunterladen. */
+export async function exportReport(app, data, from, to, report = null) {
+  if (!isValidDayKey(from) || !isValidDayKey(to) || to < from) throw new ValidationError(['Bitte einen gültigen Zeitraum wählen („bis“ nach „von“).']);
+  const settings = report ? { ...data.settings, report } : data.settings;
+  const bytes = buildNachweisXlsx({ from, to, data: { ...data, settings } });
+  const weeks = weeksInRange(from, to);
+  const kw = (w) => `KW${String(isoWeek(w)).padStart(2, '0')}`;
+  const label = weeks.length === 1 ? `${kw(weeks[0])}-${weeks[0].slice(0, 4)}` : `${kw(weeks[0])}-bis-${kw(weeks[weeks.length - 1])}-${weeks[weeks.length - 1].slice(0, 4)}`;
+  const name = `Ausbildungsnachweis_${label}.xlsx`;
+  downloadFile(name, new Blob([bytes], { type: XLSX_TYPE }));
+  toast(`„${name}“ wird heruntergeladen (${weeks.length} Woche${weeks.length === 1 ? '' : 'n'}).`, { type: 'success', timeout: 7000 });
+  return name;
 }

@@ -29,14 +29,23 @@ Die App öffnet sich wie eine normale App, ohne Adressleiste.
 ## 4. Ersteinrichtung (einmalig, ca. 2 Minuten)
 
 1. Unten auf **Einstellungen** tippen.
-2. Bei **Sollarbeitszeit** die Stunden je Wochentag prüfen
-   (voreingestellt: 8:00 Montag bis Freitag) → **„Sollzeit speichern“**.
-3. Bei **Zeitkonto und Verrechnung** bei Bedarf **Kontobeginn** und **Anfangssaldo**
+2. Bei **Arbeitszeitplan (Sollzeit)** Beginn, Ende und Pause je Wochentag prüfen
+   (voreingestellt: Mo–Fr 08:45–17:15, Pause 12:00–12:30) → **„Arbeitszeitplan speichern“**.
+3. Bei **Ausbildungsnachweis (Excel)** Name und Ausbildungsbeginn eintragen → **„Angaben speichern“**.
+4. Bei **Zeitkonto und Verrechnung** bei Bedarf **Kontobeginn** und **Anfangssaldo**
    eintragen → **„Regeln speichern“**.
-4. Bei **Lokaler Speicher** auf **„Dauerhaften Speicher anfordern“** tippen.
-5. Eine erste Sicherung erstellen (siehe Schritt 6).
+5. Bei **Lokaler Speicher** auf **„Dauerhaften Speicher anfordern“** tippen.
+6. Eine erste Sicherung erstellen (siehe Schritt 6).
 
 Danach unter **Heute** einfach **„Arbeitsbeginn“**, **„Pause“** und **„Feierabend“** tippen.
+
+**Verrechnungskonto:** Jede Abweichung vom Arbeitszeitplan zählt sofort – wer um 08:47 statt
+08:45 kommt, steht bei **−0:02**; wer abends 2 Minuten länger bleibt, wieder bei **±0**.
+Unter **Heute** steht, um wie viel Uhr du für ±0 gehen kannst.
+
+**Ausbildungsnachweis:** **Kalender** → **Woche** → **„Ausbildungsnachweis dieser Woche (Excel)“**
+(oder **Einstellungen** → **Ausbildungsnachweis (Excel)** für mehrere Wochen). Die Datei landet
+im Ordner „Downloads“ und lässt sich mit Excel, Google Tabellen oder LibreOffice öffnen.
 
 ## 5. Ohne Internet nutzen
 

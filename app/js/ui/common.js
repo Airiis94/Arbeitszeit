@@ -21,8 +21,8 @@ export function signed(min) {
   return h('span', { class: `num ${diffClass(min)}` }, fmtDuration(min, { sign: true }));
 }
 
-export function stat(label, value, sub) {
-  return h('div', { class: 'stat' },
+export function stat(label, value, sub, { wide = false } = {}) {
+  return h('div', { class: wide ? 'stat wide' : 'stat' },
     h('div', { class: 'stat-label' }, label),
     h('div', { class: 'stat-value' }, value),
     sub ? h('div', { class: 'stat-sub' }, sub) : null);

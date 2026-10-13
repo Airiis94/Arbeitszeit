@@ -5,6 +5,7 @@ import { computeDay, computeAccount, targetFor } from '../core/calc.js';
 import { deriveState } from '../core/state.js';
 import { fmtDuration, fmtDate, timeOfDay, todayKey, fmtDateTime, HOUR_MS } from '../core/time.js';
 import { stat, signed, entryList, statusBadge, backupState, issueList } from './common.js';
+import { scheduleFor, deviationBreakdown, evenOutTime } from '../core/schedule.js';
 import { quickBreak, editBreakDialog, undoToast } from './editors.js';
 
 const MODE_LABEL = { idle: 'Nicht eingestempelt', working: 'Arbeit läuft', break: 'Pause läuft' };
@@ -22,7 +23,11 @@ export async function renderToday(app) {
   const target = targetFor(workDay, settings, info);
   const acc = computeAccount({ ...data, settings, today, now });
   const row = acc.rowsByDay.get(workDay);
-  const exactDiff = d.netMin - target;
+  const plan = scheduleFor(workDay, settings, info);
+  const live = acc.live && acc.live.day === workDay ? acc.live : null;
+  // Abweichung heute: abgeschlossener Tag → Netto − Soll; sonst live gegen den Plan bis jetzt
+  const todayDev = row?.counted ? row.exactDiff : live?.deviation ?? null;
+  const minuteTotal = row?.counted || !live ? acc.minuteBalance : live.minuteBalance;
 
   // Kennzahlen
   let phaseInfo = '–';
@@ -30,10 +35,34 @@ export async function renderToday(app) {
   if (st.mode === 'break') phaseInfo = `Pause seit ${timeOfDay(st.brk.start)} (Arbeit seit ${timeOfDay(st.session.start)})`;
   if (st.mode === 'idle' && d.lastEnd) phaseInfo = `Feierabend um ${timeOfDay(d.lastEnd)}`;
 
-  let balanceValue = signed(acc.balance);
-  let balanceSub = acc.carry ? `+ ${fmtDuration(acc.carry)} Rest (noch nicht angerechnet)` : 'ohne laufenden Tag';
-  if (acc.preview) balanceSub = `inkl. heute vorläufig: ${fmtDuration(acc.preview.balance, { sign: true })}`;
-  else if (row?.counted && workDay === today) balanceSub = 'inkl. heute';
+  const balanceSub = `Zeitkonto (volle ¼ h): ${fmtDuration(acc.balance, { sign: true })} · Rest ${fmtDuration(acc.carry)}`
+    + (row?.counted ? '' : ' · heute live einberechnet');
+
+  // „Verrechnung heute“
+  let devValue;
+  let devSub;
+  if (todayDev != null) {
+    devValue = signed(todayDev);
+    if (row?.counted) devSub = `Tag abgeschlossen · angerechnet ${fmtDuration(row.credited)}`;
+    else {
+      const parts = deviationBreakdown(plan, d, now).filter((x) => x.minutes !== 0 && x.key !== 'end')
+        .map((x) => (x.key === 'start' ? `Beginn ${timeOfDay(x.actual)} statt ${timeOfDay(x.planned)}` : `${x.label} ${fmtDuration(x.actualMin)} statt ${fmtDuration(x.plannedMin)}`));
+      devSub = parts.length ? parts.join(' · ') : (d.sessions.length ? 'genau im Plan' : `Plan ab ${timeOfDay(plan.start)}`);
+    }
+  } else {
+    devValue = h('span', { class: 'num' }, fmtDuration(Math.max(0, target - d.netMin)));
+    devSub = 'noch zu arbeiten (kein Zeitplan für heute)';
+  }
+
+  // „Für ±0 gehen um“
+  let evenOut = null;
+  if (plan && !row?.counted && todayDev != null) {
+    const fmt = (t) => (t <= now ? 'erreicht' : timeOfDay(t));
+    const tDay = evenOutTime(plan, todayDev, now);
+    const tAll = evenOutTime(plan, todayDev, now, acc.minuteBalance);
+    evenOut = stat('Für ±0 gehen um', h('span', { class: 'num', 'data-testid': 'even-out' }, fmt(tDay)),
+      acc.minuteBalance ? `mit Ausgleich des Kontos (${fmtDuration(acc.minuteBalance, { sign: true })}): ${fmt(tAll)}` : 'Konto bisher ±0', { wide: true });
+  }
 
   const warnings = [];
   if (st.mode !== 'idle' && now - st.session.start > 12 * HOUR_MS) {
@@ -87,9 +116,6 @@ export async function renderToday(app) {
     h('button', { type: 'button', class: 'chip', onclick: () => editBreakDialog(app, workDay, null, d.sessions) }, '…'));
 
   const pauseSub = d.autoBreakMin ? `inkl. ${fmtDuration(d.autoBreakMin)} automatisch` : `${d.breaks.length} Pause(n)`;
-  const creditSub = acc.preview && acc.preview.day === workDay
-    ? `angerechnet ${fmtDuration(acc.preview.credited)} → ${fmtDuration(acc.preview.diff, { sign: true })}`
-    : row?.counted ? `angerechnet ${fmtDuration(row.credited)} → ${fmtDuration(row.diff, { sign: true })}` : 'exakt (vor Verrechnung)';
 
   return h('section', { class: 'view view-today' },
     h('div', { class: `status-card status-${st.mode}` },
@@ -103,9 +129,12 @@ export async function renderToday(app) {
     h('div', { class: 'stats' },
       stat('Arbeitszeit netto', h('span', { class: 'num', 'data-testid': 'net' }, fmtDuration(d.netMin)), `brutto ${fmtDuration(d.grossMin)}`),
       stat('Pausen', h('span', { class: 'num', 'data-testid': 'breaks' }, fmtDuration(d.breakMin + d.autoBreakMin)), pauseSub),
-      stat('Soll heute', h('span', { class: 'num' }, fmtDuration(target)), info?.dayType && info.dayType !== 'arbeit' ? info.dayType : null),
-      stat('Soll-Ist', h('span', { 'data-testid': 'diff' }, signed(exactDiff)), creditSub),
-      stat('Zeitkonto', h('span', { 'data-testid': 'balance' }, balanceValue), balanceSub)),
+      stat('Soll heute', h('span', { class: 'num' }, fmtDuration(target)),
+        plan ? `${plan.entry.start}–${plan.entry.end}${plan.breakStart != null ? ` · Pause ${plan.entry.breakStart}–${plan.entry.breakEnd}` : ''}`
+          : info?.dayType && info.dayType !== 'arbeit' ? info.dayType : 'kein Zeitplan'),
+      stat('Verrechnung heute', h('span', { 'data-testid': 'diff' }, devValue), devSub),
+      evenOut,
+      stat('Verrechnungskonto (minutengenau)', h('span', { 'data-testid': 'balance' }, signed(minuteTotal)), balanceSub, { wide: true })),
     warnings,
     issueList(d.issues.filter((i) => i.code !== 'stale-open')),
     h('div', { class: 'card' },

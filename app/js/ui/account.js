@@ -34,8 +34,9 @@ export async function renderAccount(app, params) {
     h('div', { class: 'card balance-card' },
       h('div', { class: 'stat-label' }, 'Zeitkonto (Saldo)'),
       h('div', { class: 'balance-big', 'data-testid': 'account-balance' }, signed(acc.balance)),
-      acc.preview ? h('div', { class: 'muted' }, `Inklusive laufendem Tag vorläufig: ${fmtDuration(acc.preview.balance, { sign: true })}`) : null,
-      usesCarry ? h('div', { class: 'muted', 'data-testid': 'account-carry' }, `Restguthaben (noch nicht angerechnet): ${fmtDuration(acc.carry)}`) : null),
+      usesCarry ? h('div', { class: 'muted', 'data-testid': 'account-carry' }, `Restguthaben (noch nicht angerechnet): ${fmtDuration(acc.carry)}`) : null,
+      h('div', { class: 'muted', 'data-testid': 'account-minutes' }, `Verrechnungskonto minutengenau: ${fmtDuration(acc.minuteBalance, { sign: true })}`),
+      acc.live?.deviation != null ? h('div', { class: 'muted' }, `inklusive heute bis jetzt (gegen Plan): ${fmtDuration(acc.live.minuteBalance, { sign: true })}`) : null),
 
     acc.problems.length ? h('div', { class: 'notice notice-warn' },
       h('b', null, `${acc.problems.length} Tag(e) werden nicht gezählt, weil sie unvollständig oder fehlerhaft sind:`),
@@ -78,16 +79,18 @@ export async function renderAccount(app, params) {
         h('h2', { class: 'nav-title' }, `Verlauf ${fmtMonth(mk)}`),
         h('a', { class: 'btn btn-small', href: `#/konto/${addMonths(mk, 1)}`, 'aria-label': 'Folgemonat' }, '›')),
       monthRows.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'ledger' },
-        h('thead', null, h('tr', null, ['Tag', 'Netto', usesCarry ? '+Rest' : null, 'Angerechnet', usesCarry ? 'Rest→' : null, 'Soll', 'Diff.', 'Saldo']
+        h('thead', null, h('tr', null, ['Tag', 'Netto', 'Soll', 'Abw.', usesCarry ? '+Rest' : null, 'Angerechnet', usesCarry ? 'Rest→' : null, 'Diff.', 'Saldo', 'Minuten']
           .filter(Boolean).map((t) => h('th', null, t)))),
         h('tbody', null, monthRows.map((r) => h('tr', { class: 'clickable', onclick: () => app.navigate(`#/tag/${r.day}`) },
           h('td', null, fmtDate(r.day, { year: false })),
           h('td', { class: 'num' }, r.status === 'empty' ? '–' : fmtDuration(r.netMin)),
+          h('td', { class: 'num' }, fmtDuration(r.target)),
+          h('td', null, r.counted ? signed(r.exactDiff) : ''),
           usesCarry ? h('td', { class: 'num muted' }, r.counted ? fmtDuration(r.carryIn) : '') : null,
           h('td', { class: 'num' }, r.counted ? fmtDuration(r.credited) : statusBadge(r.status)),
           usesCarry ? h('td', { class: 'num muted' }, fmtDuration(r.carryOut)) : null,
-          h('td', { class: 'num' }, fmtDuration(r.target)),
           h('td', null, r.counted ? signed(r.diff) : '', r.correction ? h('div', { class: 'small' }, 'Korr. ', signed(r.correction)) : null, r.flushCredit ? h('div', { class: 'small' }, 'Rest ', signed(r.flushCredit)) : null),
-          h('td', null, signed(r.balance))))))) : h('p', { class: 'muted' }, 'Keine Einträge in diesem Monat (Konto beginnt am ' + fmtDate(acc.start) + ').')),
+          h('td', null, signed(r.balance)),
+          h('td', null, signed(r.minuteBalance))))))) : h('p', { class: 'muted' }, 'Keine Einträge in diesem Monat (Konto beginnt am ' + fmtDate(acc.start) + ').')),
   );
 }

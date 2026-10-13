@@ -55,9 +55,20 @@ export const DEFAULT_AUTO_BREAK_RULES = [
   { afterMin: 9 * 60, breakMin: 45 },
 ];
 
+/** Standard-Arbeitszeitplan Mo–Fr 08:45–17:15 mit fester Pause 12:00–12:30 (= 8:00 Soll). */
+export function defaultScheduleEntry() {
+  return { start: '08:45', end: '17:15', breakStart: '12:00', breakEnd: '12:30' };
+}
+
+export function defaultSchedule() {
+  return [0, 1, 2, 3, 4].map(defaultScheduleEntry).concat([null, null]);
+}
+
+const DEFAULT_MINUTES = [480, 480, 480, 480, 480, 0, 0];
+
 export function defaultSettings(today = todayKey()) {
   return {
-    targetRules: [{ id: uuid(), validFrom: today, minutes: [480, 480, 480, 480, 480, 0, 0] }],
+    targetRules: [{ id: uuid(), validFrom: today, minutes: [...DEFAULT_MINUTES], schedule: defaultSchedule() }],
     accountStart: today,
     startBalanceMin: 0,
     rounding: { mode: 'carry', interval: 15, carryRule: 'keep' },
@@ -65,6 +76,8 @@ export function defaultSettings(today = todayKey()) {
     autoBreak: { enabled: false, rules: DEFAULT_AUTO_BREAK_RULES.map((r) => ({ ...r })) },
     theme: 'system',
     backupReminderDays: 7,
+    // Angaben für den Ausbildungsnachweis (Excel-Export)
+    report: { name: '', trainingStart: null },
     updatedAt: 0,
   };
 }
@@ -75,6 +88,11 @@ export function normalizeSettings(s, today = todayKey()) {
   const out = { ...d, ...(s || {}) };
   out.rounding = { ...d.rounding, ...(s?.rounding || {}) };
   out.autoBreak = { ...d.autoBreak, ...(s?.autoBreak || {}) };
+  out.report = { ...d.report, ...(s?.report || {}) };
   if (!Array.isArray(out.targetRules) || out.targetRules.length === 0) out.targetRules = d.targetRules;
+  // Übernahme aus Version 1.0: Eine unveränderte Standardregel ohne Arbeitszeitplan bekommt den
+  // Standardplan (gleiches Soll von 8:00). Selbst geänderte Regeln bleiben unverändert.
+  out.targetRules = out.targetRules.map((r) => (!r.schedule && JSON.stringify(r.minutes) === JSON.stringify(DEFAULT_MINUTES)
+    ? { ...r, schedule: defaultSchedule() } : r));
   return out;
 }

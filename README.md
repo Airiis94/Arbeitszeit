@@ -10,8 +10,15 @@ JSON-Datei, die du selbst verwahrst.
 - **Kalender**: Monats- und Wochenansicht mit Statusfarben, Tagesansicht mit allen Buchungen,
   Bearbeitung und Schritt-für-Schritt-Berechnung.
 - **Tätigkeiten**: einfaches Protokoll je Tag mit Dauer, Intensität, Kategorie und Summe.
-- **Zeitkonto**: Saldo mit Herleitung, Viertelstundenverrechnung mit Restübertrag, Korrekturen
-  mit Begründung, Tagesverlauf.
+- **Verrechnungskonto gegen den Arbeitszeitplan**: Beginn, Ende und feste Pause je Wochentag.
+  Jede Abweichung zählt sofort und minutengenau (08:47 statt 08:45 = −0:02, zwei Minuten länger
+  bleiben = ±0), kumulativ über alle Tage; „Für ±0 gehen um …“ auf „Heute“.
+- **Zeitkonto**: Saldo in vollen Viertelstunden mit Restübertrag, Korrekturen mit Begründung,
+  Tagesverlauf mit minutengenauer Spalte.
+- **Ausbildungsnachweis als Excel-Datei** (.xlsx) im Layout der Vorlage
+  „Ausbildungsnachweise_m_Deckblatt“: ein Blatt pro Woche, je Tag „Arbeitszeit 08:47–17:02,
+  Pause 0:30“ und die Tätigkeiten mit Einzelstunden, Gesamtstunden = Netto, Abteilung = Kategorie,
+  Nachweis-Nr. und Ausbildungsjahr aus dem Ausbildungsbeginn. Erzeugt auf dem Gerät, ohne Server.
 - **Einstellungen & Sicherung**: Sollzeiten je Wochentag (mit „gültig ab“), Verrechnungsregeln,
   JSON-Export/-Import, CSV-Export, Speicherstatus.
 
@@ -137,6 +144,7 @@ app/                    ← wird veröffentlicht
   index.html, manifest.webmanifest, sw.js, css/, icons/
   js/main.js            Start, Router, Service-Worker-Registrierung
   js/core/              reine Logik: time, model, calc (Tag/Zeitkonto), rounding (Verrechnung),
+                        schedule (Arbeitszeitplan, Live-Abweichung), nachweis + xlsx (Excel-Export),
                         state (Stempel-Zustandsautomat), validate, backup-format, csv
   js/db/                db.js (IndexedDB, Migrationen), repo.js (transaktionale Operationen)
   js/ui/                Ansichten: today, calendar, day, activities, account, settings, help, backup, editors
@@ -195,6 +203,9 @@ der Workflow automatisch.
 - Kein Startbildschirm-Widget (bräuchte eine native Android-App); App-Verknüpfungen
   „Heute“/„Kalender“ über langes Drücken auf das App-Symbol sind vorhanden.
 - Feiertage werden nicht automatisch erkannt, sondern je Tag als „Feiertag“ markiert.
+- Der Ausbildungsnachweis wird als .xlsx (nicht als altes .xls) erzeugt und enthält nur die
+  Wochenblätter, kein Deckblatt. Einzelstunden stehen als Dezimalstunden (1,50 = 1:30).
+- Der Arbeitszeitplan kennt eine feste Pause pro Tag und keine Schichten über Mitternacht.
 
 ## 8. Noch nicht implementiert (mögliche Erweiterungen)
 

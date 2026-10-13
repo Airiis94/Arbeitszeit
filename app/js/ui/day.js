@@ -7,6 +7,7 @@ import {
   fmtDuration, fmtDate, addDays, todayKey, isValidDayKey, fmtDateTime, timeOfDay,
 } from '../core/time.js';
 import { DAY_TYPES } from '../core/model.js';
+import { scheduleFor, deviationBreakdown } from '../core/schedule.js';
 import { signed, entryList, statusBadge, issueList, timeOrDash } from './common.js';
 import {
   editWorkDialog, editBreakDialog, deleteIntervalFlow, editDayInfoDialog, quickBreak,
@@ -81,6 +82,22 @@ export async function renderDay(app, params) {
   const audit = await app.repo.auditForDay(day);
 
   const strategy = getStrategy(settings.rounding.mode);
+  const plan = scheduleFor(day, settings, info);
+  const devItems = deviationBreakdown(plan, d, now);
+  const devTotal = row?.counted ? row.exactDiff : acc.live?.day === day ? acc.live.deviation : null;
+  const planCard = plan ? h('div', { class: 'card' },
+    h('div', { class: 'card-head' }, h('h2', null, 'Verrechnung gegen den Plan')),
+    h('p', { class: 'muted small' }, `Plan: ${plan.entry.start}–${plan.entry.end}${plan.breakStart != null ? `, Pause ${plan.entry.breakStart}–${plan.entry.breakEnd}` : ''} (Soll ${fmtDuration(plan.plannedMin)})`),
+    devItems.length ? h('table', { class: 'calc', 'data-testid': 'deviation' }, h('tbody', null,
+      devItems.map((x) => {
+        let label = x.label;
+        if (x.key === 'start' || x.key === 'end') label = `${x.label} ${timeOfDay(x.actual)} statt ${timeOfDay(x.planned)}`;
+        else if (x.key !== 'other') label = `${x.label} ${fmtDuration(x.actualMin)} statt ${fmtDuration(x.plannedMin)}`;
+        return h('tr', null, h('th', { scope: 'row' }, label), h('td', null, signed(x.minutes)));
+      }),
+      devTotal != null ? h('tr', { class: 'strong' }, h('th', { scope: 'row' }, row?.counted ? 'Abweichung des Tages' : 'Abweichung bis jetzt'), h('td', null, signed(devTotal))) : null,
+      row?.counted ? h('tr', null, h('th', { scope: 'row' }, 'Verrechnungskonto nach dem Tag (minutengenau)'), h('td', null, signed(row.minuteBalance))) : null))
+      : h('p', { class: 'muted' }, devTotal != null ? `Noch keine Buchung – Abweichung bis jetzt ${fmtDuration(devTotal, { sign: true })}.` : 'Noch keine Buchung.')) : null;
   const table = h('table', { class: 'calc' }, h('tbody', null,
     calcRow('Beginn', timeOrDash(d.firstStart)),
     calcRow('Ende', d.openSession ? 'läuft' : timeOrDash(d.lastEnd)),
@@ -93,7 +110,7 @@ export async function renderDay(app, params) {
     row?.counted ? calcRow('Angerechnet', fmtDuration(row.credited), 'strong') : null,
     row?.counted && strategy.usesCarry ? calcRow('Rest danach', fmtDuration(row.carryOut + (row.flushCredit || 0) + (row.flushForfeit || 0))) : null,
     row?.counted && row.forfeited ? calcRow('Verfallen', fmtDuration(row.forfeited), 'neg') : null,
-    row?.counted ? h('tr', { class: 'strong' }, h('th', { scope: 'row' }, 'Tagesdifferenz'), h('td', null, signed(row.diff))) : null,
+    row?.counted ? h('tr', { class: 'strong' }, h('th', { scope: 'row' }, 'Tagesdifferenz (angerechnet − Soll)'), h('td', null, signed(row.diff))) : null,
     row ? h('tr', null, h('th', { scope: 'row' }, 'Saldo nach dem Tag'), h('td', null, signed(row.balance))) : null,
   ));
 
@@ -122,6 +139,7 @@ export async function renderDay(app, params) {
       h('div', { class: 'quick' },
         h('span', { class: 'quick-label' }, 'Pause (Dauer):'),
         [15, 30, 45, 60].map((m) => h('button', { type: 'button', class: 'chip', onclick: () => quickBreak(app, day, m) }, `${m}`)))),
+    planCard,
     h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('h2', null, 'Berechnung')),
       table,

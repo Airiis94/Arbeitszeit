@@ -8,6 +8,7 @@ import {
 } from '../core/time.js';
 import { DAY_TYPES } from '../core/model.js';
 import { signed, timeOrDash, statusBadge } from './common.js';
+import { exportReport } from './backup.js';
 
 /** Liefert für jeden Tag des Zeitraums eine Zeile: aus dem Zeitkonto oder (außerhalb) direkt berechnet. */
 function rowsFor(from, to, data, acc, now) {
@@ -118,6 +119,9 @@ function weekView(app, weekStart, data, acc, now, today) {
     ),
     legend(),
     summaryCard('Wochenübersicht', rows, lastBalance(rows)),
+    h('button', {
+      type: 'button', class: 'btn btn-block', 'data-testid': 'week-report', onclick: () => exportReport(app, data, weekStart, to).catch(app.error),
+    }, '⬇ Ausbildungsnachweis dieser Woche (Excel)'),
   ];
 }
 
