@@ -30,22 +30,34 @@ export async function exportBackup(app, { silent = false } = {}) {
   return name;
 }
 
+// Chrome (Android) teilt nur bestimmte Dateitypen – JSON gehört nicht dazu und wird mit
+// „Permission denied“ abgelehnt. Deshalb wird die Sicherung zum Teilen als .txt (text/plain)
+// übergeben; der Inhalt ist identisch, der Import akzeptiert .json und .txt.
+const SHARE_TYPE = 'text/plain';
+const shareName = (name) => name.replace(/\.json$/, '.txt');
+
 export function canShareFiles() {
   try {
-    const f = new File(['{}'], 'test.json', { type: 'application/json' });
+    const f = new File(['{}'], 'test.txt', { type: SHARE_TYPE });
     return !!(navigator.canShare && navigator.canShare({ files: [f] }));
   } catch { return false; }
 }
 
 /** Übergibt die Sicherung an das Android-Teilen-Menü (z. B. Google Drive, E-Mail, Nextcloud). */
 export async function shareBackup(app) {
-  const { name, text, now } = await createBackupFile(app);
-  const file = new File([text], name, { type: 'application/json' });
+  const { name: jsonName, text, now } = await createBackupFile(app);
+  const name = shareName(jsonName);
+  const file = new File([text], name, { type: SHARE_TYPE });
   try {
     await navigator.share({ files: [file], title: 'Arbeitszeit-Sicherung' });
   } catch (e) {
     if (e?.name === 'AbortError') { toast('Teilen abgebrochen – keine Sicherung gespeichert.'); return; }
-    throw e;
+    // Teilen vom Browser abgelehnt (z. B. Dateityp nicht erlaubt): stattdessen herunterladen,
+    // damit die Sicherung nicht verloren geht.
+    downloadFile(jsonName, text, 'application/json');
+    await app.repo.updateMeta({ lastExportAt: now, lastExportName: jsonName, lastExportMethod: 'download' });
+    toast(`Teilen wurde vom Browser abgelehnt (${e?.message || e?.name || 'unbekannter Fehler'}). Die Sicherung wurde stattdessen in „Downloads“ gespeichert – von dort kannst du sie z. B. in Google Drive hochladen.`, { type: 'info', timeout: 12000 });
+    return;
   }
   // Ob das Ziel die Datei wirklich gespeichert hat, kann der Browser nicht prüfen.
   await app.repo.updateMeta({ lastExportAt: now, lastExportName: name, lastExportMethod: 'share' });
@@ -53,7 +65,7 @@ export async function shareBackup(app) {
 }
 
 export async function importFlow(app) {
-  const file = await pickFile('application/json,.json');
+  const file = await pickFile('application/json,.json,text/plain,.txt');
   if (!file) return;
   let text;
   try {

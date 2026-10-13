@@ -99,7 +99,9 @@ aufräumt. Deshalb:
 **Sichern** – *Einstellungen → „Sicherung herunterladen (JSON)“*
 - Die Datei `arbeitszeit-sicherung-JJJJ-MM-TT-HHMM.json` landet im Ordner **Downloads**.
 - Mit *„Sicherung teilen“* kannst du sie direkt über das Android-Teilen-Menü an **Google Drive**,
-  E-Mail, Nextcloud o. Ä. übergeben.
+  E-Mail, Nextcloud o. Ä. übergeben. Weil Chrome das Teilen von JSON-Dateien verweigert
+  („Permission denied“), wird sie dabei als `.txt` (gleicher Inhalt) übergeben; lehnt der Browser
+  trotzdem ab, wird sie automatisch heruntergeladen. Der Import akzeptiert `.json` und `.txt`.
 - Die App zeigt an, wann zuletzt gesichert wurde und ob seitdem Daten geändert wurden, und
   erinnert nach einstellbar vielen Tagen.
 - Die Sicherung enthält alles: Buchungen, Pausen, Tätigkeiten, Korrekturen, Änderungsprotokoll,

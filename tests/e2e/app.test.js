@@ -516,3 +516,45 @@ test('Ausbildungsnachweis als Excel aus der Wochenansicht und den Einstellungen'
   assert.equal(r2.name, 'Ausbildungsnachweis_KW09-bis-KW10-2026.xlsx');
   assert.match(r2.bytes.toString('utf8'), /<sheet name="KW09"[^>]*\/><sheet name="KW10"/);
 });
+
+test('Sicherung teilen: als .txt (Chrome lehnt JSON ab), Ausweichen auf Download, .txt wieder importierbar', async () => {
+  // Teilen-Menü wie Chrome auf Android: nur bestimmte Dateitypen, JSON → „Permission denied“
+  await page.addInitScript(() => {
+    navigator.canShare = () => true;
+    navigator.share = async ({ files }) => {
+      const f = files[0];
+      if (!/\.(txt|csv|pdf)$/.test(f.name) || window.__rejectShare) throw new DOMException('Permission denied', 'NotAllowedError');
+      window.__shared = { name: f.name, type: f.type, text: await f.text() };
+    };
+  });
+  await page.reload();
+  await workday();
+  await page.goto(`${base}#/einstellungen`);
+  await page.click('button:has-text("Sicherung teilen")');
+  await page.waitForFunction(() => !!window.__shared);
+  const shared = await page.evaluate(() => window.__shared);
+  assert.match(shared.name, /^arbeitszeit-sicherung-\d{4}-\d{2}-\d{2}-\d{4}\.txt$/);
+  assert.equal(shared.type, 'text/plain');
+  assert.equal(JSON.parse(shared.text).format, 'arbeitszeit-backup');
+  await page.waitForFunction(() => /aktuell/.test(document.querySelector('[data-testid=backup-state]')?.textContent || ''));
+
+  // Lehnt der Browser trotzdem ab, wird stattdessen heruntergeladen
+  await page.evaluate(() => { window.__rejectShare = true; });
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Sicherung teilen")')]);
+  assert.match(dl.suggestedFilename(), /\.json$/);
+  assert.ok(await page.isVisible('text=Teilen wurde vom Browser abgelehnt'));
+
+  // Geteilte .txt-Datei lässt sich wieder importieren
+  const dir = await mkdtemp(join(tmpdir(), 'az-'));
+  const file = join(dir, shared.name);
+  await writeFile(file, shared.text);
+  await page.evaluate(() => window.__app.repo.wipe());
+  await page.goto(`${base}#/einstellungen`);
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), click('import')]);
+  await chooser.setFiles(file);
+  await page.waitForSelector('dialog');
+  await page.uncheck('dialog input[name=backupFirst]');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  assert.equal((await intervals()).length, 2);
+});
