@@ -19,6 +19,8 @@ JSON-Datei, die du selbst verwahrst.
 
 ## 1. Auf dem Android-Smartphone nutzen
 
+**App öffnen:** **[https://airiis94.github.io/Arbeitszeit/](https://airiis94.github.io/Arbeitszeit/)**
+
 Kurzanleitung für Einsteiger: **[INSTALLATION.md](INSTALLATION.md)** – dieselbe Anleitung
 steht in der App oben rechts unter **„Hilfe“** (mit Knopf „App installieren“, wenn Chrome ihn anbietet).
 

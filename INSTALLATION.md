@@ -2,7 +2,7 @@
 
 Diese Anleitung gibt es auch direkt in der App: oben rechts auf **„Hilfe“** tippen.
 
-**Adresse der App:** `[PLATZHALTER – Adresse wird nach der Veröffentlichung eingetragen]`
+**Adresse der App:** **[https://airiis94.github.io/Arbeitszeit/](https://airiis94.github.io/Arbeitszeit/)**
 
 ---
 
