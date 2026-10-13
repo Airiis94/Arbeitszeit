@@ -14,6 +14,7 @@
 
 import { SCHEMA_VERSION, APP_VERSION, COLLECTIONS, INTENSITIES, DAY_TYPES } from './model.js';
 import { isValidDayKey } from './time.js';
+import { extractBackupJson } from './textreport.js';
 
 export const BACKUP_FORMAT = 'arbeitszeit-backup';
 
@@ -108,8 +109,12 @@ export async function parseBackup(text) {
   const errors = [];
   const warnings = [];
   let obj;
+  const json = extractBackupJson(text);
+  if (json == null) {
+    return { ok: false, errors: ['Die Datei enthält keine Sicherungsdaten (weder JSON noch Importdaten-Block einer Text-Sicherung).'], warnings };
+  }
   try {
-    obj = JSON.parse(text);
+    obj = JSON.parse(json);
   } catch (e) {
     return { ok: false, errors: [`Die Datei ist kein gültiges JSON (${e.message}). Möglicherweise ist sie unvollständig.`], warnings };
   }

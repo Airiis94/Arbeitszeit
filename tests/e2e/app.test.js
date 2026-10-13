@@ -533,9 +533,14 @@ test('Sicherung teilen: als .txt (Chrome lehnt JSON ab), Ausweichen auf Download
   await page.click('button:has-text("Sicherung teilen")');
   await page.waitForFunction(() => !!window.__shared);
   const shared = await page.evaluate(() => window.__shared);
-  assert.match(shared.name, /^arbeitszeit-sicherung-\d{4}-\d{2}-\d{2}-\d{4}\.txt$/);
+  assert.equal(shared.name, 'Arbeitszeit-Sicherung_02.03.2026_16-40.txt');
   assert.equal(shared.type, 'text/plain');
-  assert.equal(JSON.parse(shared.text).format, 'arbeitszeit-backup');
+  // Lesbarer Text mit Datum und Zeiten, kein Code am Anfang
+  assert.match(shared.text, /^ARBEITSZEIT – Sicherung vom Mo, 02\.03\.2026 16:40/);
+  assert.match(shared.text, /Mo, 02\.03\.2026\r\n  Arbeit: 08:00–16:45 \(gestempelt 08:00–16:40\)/);
+  assert.match(shared.text, /Pause:  12:00–12:30/);
+  assert.match(shared.text, /Arbeitszeit 8:15 · Pausen 0:30 · Differenz −0:05 · Zeitkonto −0:05/);
+  assert.match(shared.text, /DATEN FÜR DEN IMPORT/);
   await page.waitForFunction(() => /aktuell/.test(document.querySelector('[data-testid=backup-state]')?.textContent || ''));
 
   // Lehnt der Browser trotzdem ab, wird stattdessen heruntergeladen

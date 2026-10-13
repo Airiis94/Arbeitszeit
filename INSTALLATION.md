@@ -66,8 +66,9 @@ wird oder das Handy verloren geht. Nur eine Sicherung schützt davor.
 1. **Einstellungen** → **„Sicherung herunterladen (JSON)“**.
 2. Die Datei landet im Ordner **„Downloads“**.
 3. Empfohlen: zusätzlich **„Sicherung teilen“** tippen und die Datei z. B. in **Google Drive**
-   ablegen. Beim Teilen heißt die Datei **„….txt“** (Chrome erlaubt das Teilen von .json-Dateien
-   nicht) – der Inhalt ist derselbe und lässt sich ganz normal wieder importieren.
+   ablegen. Die geteilte Datei heißt z. B. **„Arbeitszeit-Sicherung_13.10.2026_23-38.txt“** und
+   ist lesbar: oben stehen alle Tage mit Zeiten, Pausen, Tätigkeiten und Zeitkonto, ganz unten ein
+   Datenblock für den Import. Auch diese Datei lässt sich wieder importieren.
 
 **Wiederherstellen** (z. B. auf einem neuen Handy):
 

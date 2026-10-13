@@ -22,6 +22,7 @@ const PRECACHE = [
   './js/core/model.js',
   './js/core/nachweis.js',
   './js/core/state.js',
+  './js/core/textreport.js',
   './js/core/time.js',
   './js/core/validate.js',
   './js/core/xlsx.js',

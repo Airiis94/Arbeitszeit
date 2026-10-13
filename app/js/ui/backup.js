@@ -2,7 +2,8 @@
 
 import { h, formDialog, toast, downloadFile, pickFile, readFileAsText } from './dom.js';
 import { buildBackup, parseBackup, backupSummary } from '../core/backup-format.js';
-import { fmtDateTime, todayKey, timeOfDay } from '../core/time.js';
+import { fmtDateTime, fmtDate, todayKey, timeOfDay } from '../core/time.js';
+import { buildTextBackup } from '../core/textreport.js';
 import { COLLECTIONS } from '../core/model.js';
 import { buildNachweisXlsx, weeksInRange } from '../core/nachweis.js';
 import { isValidDayKey, isoWeek } from '../core/time.js';
@@ -12,13 +13,18 @@ function fileName(now = Date.now()) {
   return `arbeitszeit-sicherung-${todayKey(now)}-${timeOfDay(now).replace(':', '')}.json`;
 }
 
+/** Dateiname der lesbaren Text-Sicherung, z. B. „Arbeitszeit-Sicherung_13.10.2026_23-38.txt“. */
+function textFileName(now = Date.now()) {
+  return `Arbeitszeit-Sicherung_${fmtDate(todayKey(now), { weekday: false })}_${timeOfDay(now).replace(':', '-')}.txt`;
+}
+
 async function createBackupFile(app) {
   const raw = await app.repo.exportData();
   const { meta, ...data } = raw;
   const now = Date.now();
   const backup = await buildBackup(data, { deviceId: meta.deviceId, now });
   const name = fileName(now);
-  return { name, text: JSON.stringify(backup, null, 1), now };
+  return { name, text: JSON.stringify(backup, null, 1), now, backup, data };
 }
 
 /** Lädt die Sicherung als Datei herunter (landet unter Android im Ordner „Downloads“). */
@@ -31,10 +37,9 @@ export async function exportBackup(app, { silent = false } = {}) {
 }
 
 // Chrome (Android) teilt nur bestimmte Dateitypen – JSON gehört nicht dazu und wird mit
-// „Permission denied“ abgelehnt. Deshalb wird die Sicherung zum Teilen als .txt (text/plain)
-// übergeben; der Inhalt ist identisch, der Import akzeptiert .json und .txt.
+// „Permission denied“ abgelehnt. Geteilt wird deshalb eine lesbare Text-Sicherung (.txt):
+// oben die Zeiten als Text, unten ein Datenblock, mit dem die Datei wieder importiert werden kann.
 const SHARE_TYPE = 'text/plain';
-const shareName = (name) => name.replace(/\.json$/, '.txt');
 
 export function canShareFiles() {
   try {
@@ -45,9 +50,9 @@ export function canShareFiles() {
 
 /** Übergibt die Sicherung an das Android-Teilen-Menü (z. B. Google Drive, E-Mail, Nextcloud). */
 export async function shareBackup(app) {
-  const { name: jsonName, text, now } = await createBackupFile(app);
-  const name = shareName(jsonName);
-  const file = new File([text], name, { type: SHARE_TYPE });
+  const { name: jsonName, text, now, backup, data } = await createBackupFile(app);
+  const name = textFileName(now);
+  const file = new File([buildTextBackup({ data, backup, now })], name, { type: SHARE_TYPE });
   try {
     await navigator.share({ files: [file], title: 'Arbeitszeit-Sicherung' });
   } catch (e) {

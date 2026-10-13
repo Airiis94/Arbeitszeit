@@ -61,7 +61,7 @@ export async function renderHelp(app) {
       step(7, 'Daten sichern',
         h('p', null, 'Die Daten liegen nur auf diesem Handy. Werden die Browserdaten von Chrome gelöscht oder geht das Handy verloren, sind sie weg – außer du hast eine Sicherung.'),
         h('ul', null,
-          h('li', null, 'Sichern: Einstellungen → „Sicherung herunterladen (JSON)“. Die Datei landet im Ordner „Downloads“. Am besten zusätzlich mit „Sicherung teilen“ in Google Drive o. Ä. ablegen (die geteilte Datei endet auf .txt, der Inhalt ist derselbe).'),
+          h('li', null, 'Sichern: Einstellungen → „Sicherung herunterladen (JSON)“. Die Datei landet im Ordner „Downloads“. Am besten zusätzlich mit „Sicherung teilen“ in Google Drive o. Ä. ablegen (die geteilte .txt-Datei ist lesbar: alle Zeiten als Text, unten Daten für den Import).'),
           h('li', null, 'Wiederherstellen: Einstellungen → „Sicherung importieren …“ und die Datei auswählen.'),
           h('li', null, 'Regelmäßig sichern, z. B. einmal pro Woche. Die App erinnert daran.'),
           h('li', null, 'Ausbildungsnachweis als Excel: Kalender → Woche → „Ausbildungsnachweis dieser Woche (Excel)“ oder Einstellungen → „Ausbildungsnachweis (Excel)“.')),

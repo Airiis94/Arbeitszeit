@@ -114,3 +114,48 @@ describe('Zusammenführen', () => {
     assert.ok(puts.some((p) => p.id === b.id && p.deleted));
   });
 });
+
+describe('Lesbare Text-Sicherung (.txt)', async () => {
+  const { buildTextBackup, extractBackupJson, DATA_BEGIN } = await import('../../app/js/core/textreport.js');
+
+  test('Text enthält Datum, gebuchte/gestempelte Zeiten, Pausen, Tätigkeiten; Rück-Import ergibt identische Daten', async () => {
+    const data = sample();
+    const backup = await buildBackup(data, { deviceId: 'dev-1' });
+    const text = buildTextBackup({ data, backup, now: at(DAY, '18:05') });
+    assert.match(text, /^ARBEITSZEIT – Sicherung vom Mo, 02\.03\.2026 18:05/);
+    assert.match(text, /Zeitkonto: \+0:55/);
+    assert.match(text, /Mo, 02\.03\.2026\r\n  Arbeit: 08:00–16:45 \(gestempelt 08:00–16:40\)/);
+    assert.match(text, /  Pause:  12:00–12:30\r\n/);
+    assert.match(text, /  Pause:  0:15\r\n/);
+    assert.match(text, /Arbeitszeit 8:00 · Pausen 0:45 · Differenz −0:05 · Korrektur −0:30 · Zeitkonto \+0:55/);
+    assert.match(text, /    - Angebot \(1:30, Büro, Intensität hoch\)/);
+    assert.match(text, /Notiz: Notiz; mit "Zeichen"/);
+    assert.match(text, /02\.03\.2026  −0:30  Arztbesuch/);
+    // gelöschte Einträge erscheinen nicht im Text
+    assert.doesNotMatch(text, /Di, 03\.03\.2026/);
+    assert.ok(text.indexOf(DATA_BEGIN) > text.indexOf('Arztbesuch'));
+    const res = await parseBackup(text);
+    assert.equal(res.ok, true, res.errors.join('\n'));
+    assert.deepEqual(res.warnings, []);
+    assert.deepEqual(res.backup.data, data);
+  });
+
+  test('Umlaute und Sonderzeichen überstehen den Datenblock', async () => {
+    const data = sample();
+    data.activities[0].title = 'Prüfung „Öl“ – ß & <x> 😀';
+    const text = buildTextBackup({ data, backup: await buildBackup(data), now: at(DAY, '18:05') });
+    const res = await parseBackup(text);
+    assert.equal(res.backup.data.activities[0].title, 'Prüfung „Öl“ – ß & <x> 😀');
+  });
+
+  test('Text ohne Datenblock bzw. beschädigter Block wird abgelehnt', async () => {
+    let res = await parseBackup('Nur ein Text ohne Daten');
+    assert.equal(res.ok, false);
+    assert.match(res.errors[0], /keine Sicherungsdaten/);
+    const text = buildTextBackup({ data: sample(), backup: await buildBackup(sample()), now: at(DAY, '18:05') });
+    const broken = text.replace(/(AZB1:.{20})/, '$1###');
+    res = await parseBackup(broken);
+    assert.equal(res.ok, false);
+    assert.equal(extractBackupJson('{"a":1}'), '{"a":1}');
+  });
+});
