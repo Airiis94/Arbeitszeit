@@ -1,7 +1,7 @@
 // Kalender: Monats- und Wochenansicht mit Zusammenfassung. Antippen eines Tages öffnet die Tagesansicht.
 
 import { h } from './dom.js';
-import { computeDay, computeAccount, targetFor, summarize } from '../core/calc.js';
+import { computeAccount, dayRow, summarize } from '../core/calc.js';
 import {
   fmtDuration, fmtDate, fmtMonth, addDays, addMonths, todayKey, monthKey, firstOfMonth, lastOfMonth,
   startOfWeek, weekdayIndex, isoWeek, WEEKDAYS_SHORT, isValidDayKey,
@@ -17,14 +17,7 @@ function rowsFor(from, to, data, acc, now) {
   for (let day = from; day <= to; day = addDays(day, 1)) {
     let row = acc.rowsByDay.get(day);
     const info = data.dayInfos.find((x) => x.day === day) || null;
-    if (!row) {
-      const d = computeDay(data.intervals.filter((i) => i.day === day), { now, autoBreak: settings.autoBreak });
-      row = {
-        day, status: d.status, dayType: info?.dayType || null, target: targetFor(day, settings, info),
-        firstStart: d.firstStart, lastEnd: d.lastEnd, grossMin: d.grossMin, breakMin: d.breakMin,
-        autoBreakMin: d.autoBreakMin, netMin: d.netMin, counted: false, diff: null, balance: null, outside: true,
-      };
-    }
+    if (!row) row = { ...dayRow(day, data.intervals.filter((i) => i.day === day), info, settings, now), outside: true };
     out.push(row);
   }
   return out;
@@ -35,12 +28,11 @@ function summaryCard(title, rows, endBalance) {
   return h('div', { class: 'card summary' },
     h('h2', null, title),
     h('div', { class: 'summary-grid' },
-      h('div', null, h('span', null, 'Soll'), h('b', { class: 'num' }, fmtDuration(s.target))),
-      h('div', null, h('span', null, 'Netto'), h('b', { class: 'num' }, fmtDuration(s.netMin))),
-      h('div', null, h('span', null, 'Angerechnet'), h('b', { class: 'num' }, fmtDuration(s.credited))),
-      h('div', null, h('span', null, 'Pausen'), h('b', { class: 'num' }, fmtDuration(s.breakMin))),
-      h('div', null, h('span', null, 'Differenz'), h('b', null, signed(s.diff))),
-      h('div', null, h('span', null, 'Saldo am Ende'), h('b', null, endBalance == null ? '–' : signed(endBalance))),
+      h('div', null, h('span', null, 'Arbeitszeit (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedNetMin))),
+      h('div', null, h('span', null, 'gestempelt'), h('b', { class: 'num' }, fmtDuration(s.netMin))),
+      h('div', null, h('span', null, 'Pausen (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedBreakMin))),
+      h('div', null, h('span', null, 'Differenzminuten'), h('b', null, signed(s.effect))),
+      h('div', null, h('span', null, 'Zeitkonto am Ende'), h('b', null, endBalance == null ? '–' : signed(endBalance))),
       h('div', null, h('span', null, 'Arbeitstage'), h('b', { class: 'num' }, String(s.workedDays))),
       s.open ? h('div', { class: 'neg' }, h('span', null, 'Offen/fehlerhaft'), h('b', { class: 'num' }, String(s.open))) : null));
 }
@@ -58,10 +50,9 @@ function legend() {
 
 function cellClass(r, today) {
   const c = ['cal-cell', `st-${r.status}`];
-  if (r.status === 'empty' && r.dayType && DAY_TYPES[r.dayType]?.zeroTarget) c.push('st-absence');
+  if (r.status === 'empty' && r.dayType && r.dayType !== 'arbeit') c.push('st-absence');
   if (r.day === today) c.push('is-today');
   if (r.day > today) c.push('is-future');
-  if (r.status === 'empty' && r.counted && r.target > 0) c.push('st-missing');
   return c.join(' ');
 }
 
@@ -76,8 +67,8 @@ function monthView(app, mk, data, acc, now, today) {
     const dayNum = Number(r.day.slice(8));
     cells.push(h('a', { class: cellClass(r, today), href: `#/tag/${r.day}`, 'aria-label': fmtDate(r.day) },
       h('span', { class: 'cal-num' }, String(dayNum)),
-      r.netMin || r.status !== 'empty' ? h('span', { class: 'cal-net num' }, fmtDuration(r.netMin)) : null,
-      r.counted && r.diff !== 0 ? h('span', { class: `cal-diff num ${r.diff > 0 ? 'pos' : 'neg'}` }, fmtDuration(r.diff, { sign: true })) : null,
+      r.status !== 'empty' ? h('span', { class: 'cal-net num' }, fmtDuration(r.bookedNetMin ?? r.netMin)) : null,
+      r.effect ? h('span', { class: `cal-diff num ${r.effect > 0 ? 'pos' : 'neg'}` }, fmtDuration(r.effect, { sign: true })) : null,
       r.status === 'empty' && r.dayType && r.dayType !== 'arbeit' ? h('span', { class: 'cal-type' }, DAY_TYPES[r.dayType]?.label.slice(0, 6)) : null));
   }
   return [
@@ -102,19 +93,18 @@ function weekView(app, weekStart, data, acc, now, today) {
       h('h1', { class: 'nav-title' }, `KW ${isoWeek(weekStart)} · ${fmtDate(weekStart, { weekday: false, year: false })}–${fmtDate(to, { weekday: false })}`),
       h('a', { class: 'btn btn-small', href: `#/kalender/woche/${addDays(weekStart, 7)}`, 'aria-label': 'Folgewoche' }, '›')),
     h('div', { class: 'table-wrap' }, h('table', { class: 'week-table' },
-      h('thead', null, h('tr', null, ['Tag', 'Beginn', 'Ende', 'Pause', 'Netto', 'Soll', 'Diff.', 'Saldo'].map((t) => h('th', null, t)))),
+      h('thead', null, h('tr', null, ['Tag', 'Kommen', 'Gehen', 'Pause', 'Arbeit', 'Diff.', 'Konto'].map((t) => h('th', null, t)))),
       h('tbody', null, rows.map((r) => h('tr', {
-        class: `${cellClass(r, today)} clickable`, tabindex: 0, role: 'link',
+        class: `${cellClass(r, today).replace('cal-cell', 'week-row')} clickable`, tabindex: 0, role: 'link', 'data-testid': 'week-row',
         onclick: () => app.navigate(`#/tag/${r.day}`),
         onkeydown: (e) => { if (e.key === 'Enter') app.navigate(`#/tag/${r.day}`); },
       },
-      h('td', null, fmtDate(r.day, { year: false })),
-      h('td', { class: 'num' }, timeOrDash(r.firstStart)),
-      h('td', { class: 'num' }, r.status === 'running' ? 'läuft' : timeOrDash(r.lastEnd)),
-      h('td', { class: 'num' }, fmtDuration(r.breakMin + (r.autoBreakMin || 0))),
-      h('td', { class: 'num' }, fmtDuration(r.netMin)),
-      h('td', { class: 'num' }, fmtDuration(r.target)),
-      h('td', null, r.counted ? signed(r.diff) : (r.status === 'empty' ? '' : statusBadge(r.status))),
+      h('td', null, fmtDate(r.day, { year: false }).replace(',', '')),
+      h('td', { class: 'num' }, timeOrDash(r.bookedFirst)),
+      h('td', { class: 'num' }, r.status === 'running' ? 'läuft' : timeOrDash(r.bookedLast)),
+      h('td', { class: 'num' }, r.status === 'empty' ? '' : fmtDuration(r.bookedBreakMin)),
+      h('td', { class: 'num' }, r.status === 'empty' ? '' : r.bookedNetMin == null ? statusBadge(r.status) : fmtDuration(r.bookedNetMin)),
+      h('td', null, r.status === 'empty' ? '' : signed(r.effect)),
       h('td', null, r.balance == null ? '' : signed(r.balance)))))),
     ),
     legend(),

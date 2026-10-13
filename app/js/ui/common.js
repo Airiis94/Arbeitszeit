@@ -28,27 +28,54 @@ export function stat(label, value, sub, { wide = false } = {}) {
     sub ? h('div', { class: 'stat-sub' }, sub) : null);
 }
 
-/** Liste der Arbeitsphasen und Pausen eines Tages (chronologisch). */
-export function entryList(day, dayCalc, { onEdit, onDelete } = {}) {
+/** Kurzbeschreibung eines Stempels: „Kommen 08:50 → 08:45 (−0:05)“. */
+export function stampText(st, day) {
+  const fmt = (v) => (st.isDuration ? fmtDuration(v) : fmtTimeRel(v, day));
+  if (st.dir === 'exact') return `${st.label} ${fmt(st.actual)} (genau)`;
+  return `${st.label} ${fmt(st.actual)} → ${fmt(st.booked)} (${fmtDuration(st.effect, { sign: true })})`;
+}
+
+/**
+ * Liste der Arbeitsphasen und Pausen eines Tages (chronologisch) mit gebuchten Viertelstunden.
+ * @param booking Ergebnis von bookDay; @param onToggle (stamp) => …  andere Viertelstunde wählen
+ */
+export function entryList(day, dayCalc, { onEdit, onDelete, booking, onToggle } = {}) {
   const items = [
     ...dayCalc.sessions.map((s) => ({ rec: s, t: s.start ?? 0 })),
     ...dayCalc.breaks.map((b) => ({ rec: b, t: b.start ?? Number.MAX_SAFE_INTEGER })),
   ].sort((a, b) => a.t - b.t);
   const issueIds = new Set(dayCalc.issues.flatMap((i) => i.ids));
+  const bookedById = new Map((booking?.items || []).map((it) => [it.rec.id, it]));
   if (!items.length) return h('p', { class: 'muted' }, 'Noch keine Buchungen.');
   return h('ul', { class: 'entries' }, items.map(({ rec }) => {
     const isWork = rec.kind === 'work';
-    const range = rec.start != null
-      ? `${fmtTimeRel(rec.start, day)} – ${rec.end != null ? fmtTimeRel(rec.end, day) : 'läuft'}`
-      : `${fmtDuration(rec.durationMin)} (nur Dauer)`;
-    const dur = rec.start != null && rec.end != null ? fmtDuration(Math.floor((rec.end - rec.start) / 60000)) : '';
+    const bk = bookedById.get(rec.id);
+    let range;
+    let dur = '';
+    if (rec.start != null) {
+      const s = bk ? bk.start : rec.start;
+      const e = bk ? bk.end : rec.end;
+      range = `${fmtTimeRel(s, day)} – ${rec.end != null ? fmtTimeRel(e, day) : 'läuft'}`;
+      if (rec.end != null) dur = fmtDuration(Math.round((e - s) / 60000));
+    } else {
+      range = `${fmtDuration(bk ? bk.durationMin : rec.durationMin)} (nur Dauer)`;
+    }
+    const stamps = bk ? bk.stamps : [];
     return h('li', { class: `entry entry-${rec.kind}${issueIds.has(rec.id) ? ' entry-issue' : ''}` },
-      h('span', { class: 'entry-kind' }, isWork ? 'Arbeit' : 'Pause'),
-      h('span', { class: 'entry-range' }, range),
-      h('span', { class: 'entry-dur num' }, dur),
-      h('span', { class: 'entry-src', title: rec.source === 'clock' ? 'gestempelt' : 'manuell eingetragen' }, rec.source === 'clock' ? '' : 'manuell'),
-      onEdit && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Bearbeiten', onclick: () => onEdit(rec) }, '✎'),
-      onDelete && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Löschen', onclick: () => onDelete(rec) }, '🗑'));
+      h('div', { class: 'entry-main' },
+        h('span', { class: 'entry-kind' }, isWork ? 'Arbeit' : 'Pause'),
+        h('span', { class: 'entry-range', 'data-testid': 'booked-range' }, range),
+        h('span', { class: 'entry-dur num' }, dur),
+        h('span', { class: 'entry-src', title: rec.source === 'clock' ? 'gestempelt' : 'manuell eingetragen' }, rec.source === 'clock' ? '' : 'manuell'),
+        onEdit && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Bearbeiten', onclick: () => onEdit(rec) }, '✎'),
+        onDelete && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Löschen', onclick: () => onDelete(rec) }, '🗑')),
+      stamps.length ? h('div', { class: 'entry-stamps' }, stamps.map((st) => (st.dir === 'exact' || !onToggle
+        ? h('span', { class: 'stamp' }, stampText(st, day))
+        : h('button', {
+          type: 'button', class: `stamp stamp-btn${st.manual ? ' stamp-manual' : ''}`, 'data-testid': `stamp-${st.field}-${rec.kind}`,
+          title: `Stattdessen ${st.isDuration ? fmtDuration(st.alt) : fmtTimeRel(st.alt, day)} buchen`,
+          onclick: () => onToggle(st),
+        }, stampText(st, day), h('span', { class: 'stamp-alt' }, ` ⇄ ${st.isDuration ? fmtDuration(st.alt) : fmtTimeRel(st.alt, day)}`))))) : null);
   }));
 }
 

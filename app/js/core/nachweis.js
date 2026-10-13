@@ -1,14 +1,16 @@
 // Ausbildungsnachweis: Wochenblätter im Layout der Vorlage „Ausbildungsnachweise_m_Deckblatt“.
 //
-// Je Tag: erste Zeile „Arbeitszeit 08:47–17:02, Pause 0:30“, darunter die Tätigkeiten mit
-// Einzelstunden; „Gesamtstunden“ = Netto-Arbeitszeit des Tages; „Ausbildungsabteilung“ = Kategorie.
+// Je Tag: erste Zeile mit den gebuchten Zeiten „Arbeitszeit 08:45–17:00, Pause 0:30“ (Viertelstunden),
+// darunter die Tätigkeiten mit Einzelstunden; „Gesamtstunden“ = gebuchte Arbeitszeit des Tages;
+// „Ausbildungsabteilung“ = Kategorie. Laufende Tage zählen erst nach Feierabend in die Gesamtstunden.
 // Mo–Fr haben mindestens 5 Zeilen, Samstag 3 (wie in der Vorlage); bei mehr Einträgen wächst der Block.
 // Sonntag erscheint nur, wenn an dem Tag etwas erfasst wurde.
 
 import {
   addDays, startOfWeek, isoWeek, fmtDate, fmtDuration, fmtTimeRel, WEEKDAYS_LONG, daysBetween, parseDayKey, isValidDayKey,
 } from './time.js';
-import { computeDay, groupByDay } from './calc.js';
+import { computeDay, groupByDay, calcAutoBreak } from './calc.js';
+import { bookDay } from './booking.js';
 import { DAY_TYPES } from './model.js';
 import { buildXlsx, STYLE } from './xlsx.js';
 
@@ -31,15 +33,14 @@ export function trainingYear(weekStart, trainingStart) {
   return Math.max(0, years) + 1;
 }
 
-function workLine(day, d) {
+function workLine(day, d, booked) {
   if (!d.sessions.length) return null;
-  const ranges = d.sessions
-    .filter((s) => s.start != null)
-    .map((s) => `${fmtTimeRel(s.start, day)}–${s.end != null ? fmtTimeRel(s.end, day) : '…'}`)
+  const ranges = booked.items
+    .filter((it) => it.rec.kind === 'work' && it.start != null)
+    .sort((a, b) => a.start - b.start)
+    .map((it) => `${fmtTimeRel(it.start, day)}–${it.end != null ? fmtTimeRel(it.end, day) : '…'}`)
     .join(', ');
-  const pause = d.breakMin + d.autoBreakMin;
-  let text = `Arbeitszeit ${ranges}, Pause ${fmtDuration(pause)}`;
-  if (d.autoBreakMin) text += ` (davon ${fmtDuration(d.autoBreakMin)} automatisch)`;
+  let text = `Arbeitszeit ${ranges}, Pause ${fmtDuration(booked.bookedBreakMin)}`;
   if (d.status === 'running') text += ' (läuft noch)';
   if (d.status === 'incomplete' || d.status === 'conflict') text += ' (unvollständig – bitte prüfen)';
   return text;
@@ -57,18 +58,24 @@ export function buildWeekReport({ weekStart, intervals = [], activities = [], da
   const days = [];
   for (let i = 0; i < 7; i += 1) {
     const day = addDays(ws, i);
-    const d = computeDay(byDay.get(day) || [], { now, autoBreak: settings.autoBreak });
+    const ivs = byDay.get(day) || [];
+    const d = computeDay(ivs, { now, autoBreak: settings.autoBreak });
+    const b = bookDay(ivs, settings.rounding?.interval || 15);
+    // Gebuchte Werte (Viertelstunden); automatische Pause nur, wenn ausdrücklich aktiviert
+    const auto = b.bookedNetMin != null && settings.autoBreak?.enabled ? calcAutoBreak(b.bookedNetMin, b.bookedBreakMin, settings.autoBreak.rules) : 0;
+    const booked = { items: b.items, bookedBreakMin: b.bookedBreakMin + auto };
+    const netMin = b.bookedNetMin == null ? 0 : Math.max(0, b.bookedNetMin - auto);
     const info = infoByDay.get(day);
     const acts = (actsByDay.get(day) || []).sort((a, b) => a.createdAt - b.createdAt);
     const lines = [];
-    const wl = workLine(day, d);
+    const wl = workLine(day, d, booked);
     if (wl) lines.push({ text: wl, minutes: null, dept: '', info: true });
     if (info?.dayType && info.dayType !== 'arbeit') lines.push({ text: DAY_TYPES[info.dayType]?.label || info.dayType, minutes: null, dept: '', info: true });
     for (const a of acts) {
       lines.push({ text: a.description ? `${a.title} – ${a.description}` : a.title, minutes: a.minutes, dept: a.category || '', info: false });
     }
     if (i === 6 && !lines.length) continue; // Sonntag nur bei Einträgen
-    days.push({ day, label: WEEKDAYS_LONG[i], lines, netMin: d.netMin, minRows: MIN_ROWS[i] });
+    days.push({ day, label: WEEKDAYS_LONG[i], lines, netMin, minRows: MIN_ROWS[i] });
   }
   const report = settings.report || {};
   return {

@@ -171,32 +171,34 @@ export async function deleteIntervalFlow(app, rec) {
 
 // ---------- Tagesangaben ----------
 
-export function editDayInfoDialog(app, day, info, defaultTarget) {
+export function editDayInfoDialog(app, day, info) {
   return formDialog({
     title: `Tagesangaben – ${fmtDate(day)}`,
     build: () => [
       field('Tagesart', h('select', { name: 'dayType', class: 'input' },
         Object.entries(DAY_TYPES).map(([k, v]) => h('option', { value: k, selected: (info?.dayType || 'arbeit') === k }, v.label))),
-      'Urlaub, Krank, Feiertag und Frei setzen das Soll auf 0.'),
-      field('Individuelle Sollzeit (h:mm)', h('input', {
-        name: 'target', type: 'text', class: 'input', inputmode: 'numeric',
-        value: Number.isInteger(info?.targetOverrideMin) ? fmtDuration(info.targetOverrideMin) : '',
-        placeholder: `Standard: ${fmtDuration(defaultTarget)}`,
-      }), 'Leer lassen für die Standard-Sollzeit.'),
+      'Erscheint im Kalender und im Ausbildungsnachweis.'),
       field('Notiz', h('textarea', { name: 'note', class: 'input', rows: 2, maxlength: 500 }, info?.note || '')),
     ],
     onSubmit: async (form) => {
       const f = new FormData(form);
-      const t = (f.get('target') || '').trim();
-      let targetOverrideMin = null;
-      if (t) {
-        targetOverrideMin = parseDuration(t);
-        if (targetOverrideMin == null || targetOverrideMin < 0 || targetOverrideMin > 1440) throw err('Ungültige Sollzeit.');
-      }
-      await app.repo.saveDayInfo(day, { dayType: f.get('dayType'), targetOverrideMin, note: f.get('note') || '' });
+      await app.repo.saveDayInfo(day, { dayType: f.get('dayType'), targetOverrideMin: null, note: f.get('note') || '' });
       toast('Tagesangaben gespeichert.', { type: 'success' });
     },
   });
+}
+
+/** Andere Viertelstunde für einen Stempel wählen (Umschalten zwischen ab- und aufrunden). */
+export async function toggleStamp(app, intervals, st) {
+  const rec = intervals.find((i) => i.id === st.recId);
+  if (!rec) return;
+  const field = st.field === 'start' ? 'startRound' : 'endRound';
+  // Ist die andere Richtung die automatische (nächstgelegene), wird die manuelle Wahl entfernt.
+  const next = st.manual ? null : st.altDir;
+  try {
+    const res = await app.repo.saveIntervals([touch(rec, { [field]: next })], { reason: 'Viertelstunde gewählt' });
+    undoToast(app, `${st.label} wird jetzt auf ${st.isDuration ? fmtDuration(st.alt) : timeOfDay(st.alt)} gebucht.`, res.changes);
+  } catch (e) { app.error(e); }
 }
 
 // ---------- Tätigkeiten ----------

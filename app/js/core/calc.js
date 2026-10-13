@@ -2,11 +2,9 @@
 // Alles wird bei Bedarf aus den gespeicherten Rohdaten abgeleitet – nichts davon wird gespeichert.
 
 import {
-  HOUR_MS, minutesBetween, addDays, weekdayIndex, isLastDayOfMonth, timeOfDay, fmtDuration,
+  HOUR_MS, minutesBetween, addDays, timeOfDay, fmtDuration,
 } from './time.js';
-import { DAY_TYPES } from './model.js';
-import { applyRounding, getStrategy } from './rounding.js';
-import { plannedMinutes, scheduleFor, liveDeviation } from './schedule.js';
+import { bookDay } from './booking.js';
 
 /** Offene Arbeitsphasen, die länger zurückliegen, gelten als „unvollständig“ (Feierabend vergessen). */
 export const RUNNING_MAX_MS = 24 * HOUR_MS;
@@ -166,22 +164,6 @@ export function computeDay(intervals, { now = Date.now(), autoBreak = null } = {
   };
 }
 
-/**
- * Sollzeit eines Tages: Tagesüberschreibung > Tagesart > gültige Regel.
- * Hat die Regel einen Arbeitszeitplan, ergibt sich das Soll aus dem Plan (Ende − Beginn − Pause).
- */
-export function targetFor(day, settings, dayInfo) {
-  if (dayInfo && Number.isInteger(dayInfo.targetOverrideMin)) return dayInfo.targetOverrideMin;
-  if (dayInfo?.dayType && DAY_TYPES[dayInfo.dayType]?.zeroTarget) return 0;
-  const rules = [...(settings.targetRules || [])].sort((a, b) => a.validFrom.localeCompare(b.validFrom));
-  if (rules.length === 0) return 0;
-  let rule = rules[0];
-  for (const r of rules) if (r.validFrom <= day) rule = r;
-  const wd = weekdayIndex(day);
-  if (Array.isArray(rule.schedule)) return plannedMinutes(rule.schedule[wd]);
-  return rule.minutes[wd] ?? 0;
-}
-
 export function groupByDay(records) {
   const map = new Map();
   for (const r of records) {
@@ -193,32 +175,22 @@ export function groupByDay(records) {
 }
 
 /**
- * Zeitkonto-Verlauf vom Kontobeginn bis heute.
+ * Zeitkonto-Verlauf vom Kontobeginn bis heute (siehe docs/ZEITKONTO.md).
  *
- * Regeln (siehe docs/ZEITKONTO.md):
- *  - Gezählt werden abgeschlossene Tage bis einschließlich heute.
- *  - Vergangene Tage ohne Buchung zählen mit Netto 0 (wenn countEmptyDays), also −Soll.
- *  - Laufende, unvollständige oder fehlerhafte Tage zählen NICHT und werden gemeldet.
- *  - Tagesdifferenz = angerechnete Zeit − Soll. Saldo = Anfangssaldo + Σ Differenzen + Σ Korrekturen
- *    + Σ Monatsend-Gutschriften. Der Rest (noch nicht angerechnete Minuten) wird separat geführt.
- *  - Minutenkonto = Anfangssaldo + Σ (Netto − Soll) + Σ Korrekturen: die minutengenaue Abweichung.
- *  - `live`: Abweichung des offenen Tages (laufend oder heute noch nicht gezählt) gegenüber dem
- *    Arbeitszeitplan bis jetzt – z. B. −0:02 bei Ankunft 08:47 statt 08:45.
+ * Das Konto enthält ausschließlich die Differenzminuten zwischen gestempelten und auf
+ * Viertelstunden gebuchten Zeiten, den Anfangssaldo und Korrekturen. Es gibt kein Tagessoll.
+ *   Saldo = Anfangssaldo + Σ Differenzen + Σ Korrekturen
+ * Stempel eines laufenden Tages zählen sofort (z. B. Kommen 08:50 → 08:45: −5 direkt beim Kommen).
  */
 export function computeAccount({ intervals = [], dayInfos = [], corrections = [], settings, today, now = Date.now() }) {
   const byDay = groupByDay(intervals);
   const infoByDay = new Map(dayInfos.filter((d) => !d.deleted).map((d) => [d.day, d]));
   const corrs = corrections.filter((c) => !c.deleted);
   const start = settings.accountStart || today;
-  const { mode, interval, carryRule } = settings.rounding;
-  const strategy = getStrategy(mode);
+  const interval = settings.rounding?.interval || 15;
 
   let balance = settings.startBalanceMin || 0;
-  let minuteBalance = settings.startBalanceMin || 0;
-  let carry = 0;
-  let forfeitedTotal = 0;
-  let diffTotal = 0;
-  let flushCreditTotal = 0;
+  let effectTotal = 0;
   let correctionsTotal = 0;
   const corrByDay = new Map();
   let correctionsBeforeStart = 0;
@@ -229,116 +201,78 @@ export function computeAccount({ intervals = [], dayInfos = [], corrections = []
     corrByDay.set(c.day, (corrByDay.get(c.day) || 0) + c.minutes);
   }
   balance += correctionsBeforeStart;
-  minuteBalance += correctionsBeforeStart;
   correctionsTotal += correctionsBeforeStart;
 
   const rows = [];
   const problems = [];
-  let preview = null;
-  let live = null;
-
   if (start <= today) {
     for (let day = start; day <= today; day = addDays(day, 1)) {
-      const info = infoByDay.get(day) || null;
-      const d = computeDay(byDay.get(day) || [], { now, autoBreak: settings.autoBreak });
-      const target = targetFor(day, settings, info);
-      const row = {
-        day, status: d.status, dayType: info?.dayType || null, target,
-        firstStart: d.firstStart, lastEnd: d.lastEnd,
-        grossMin: d.grossMin, breakMin: d.breakMin, autoBreakMin: d.autoBreakMin, netMin: d.netMin,
-        counted: false, carryIn: carry, credited: null, carryOut: carry, forfeited: 0,
-        diff: null, exactDiff: null, correction: corrByDay.get(day) || 0, flushCredit: 0, flushForfeit: 0, balance: 0,
-        minuteBalance: 0,
-      };
-
-      const past = day < today;
-      let countable = false;
-      let net = d.netMin;
-      if (d.status === 'complete') countable = true;
-      else if (d.status === 'empty' && past && settings.countEmptyDays) { countable = true; net = 0; }
-
-      if (countable) {
-        const r = applyRounding(mode, net, carry, interval);
-        row.counted = true;
-        row.credited = r.credited;
-        row.forfeited = r.forfeited;
-        forfeitedTotal += r.forfeited;
-        carry = strategy.usesCarry ? r.carryOut : 0;
-        row.diff = r.credited - target;
-        row.exactDiff = net - target;
-        diffTotal += row.diff;
-        balance += row.diff;
-        minuteBalance += row.exactDiff;
-      } else if (d.status === 'incomplete' || d.status === 'conflict') {
-        problems.push({ day, status: d.status, issues: d.issues });
-      } else if (d.status === 'running') {
-        const r = applyRounding(mode, d.netMin, strategy.usesCarry ? carry : 0, interval);
-        preview = { day, netMin: d.netMin, target, credited: r.credited, carryOut: r.carryOut, exactDiff: d.netMin - target, diff: r.credited - target };
-      }
-      if (!countable && (d.status === 'running' || (d.status === 'empty' && day === today))) {
-        const plan = scheduleFor(day, settings, info);
-        const deviation = liveDeviation(plan, d.netMin, now);
-        live = { day, plan, netMin: d.netMin, target, deviation, status: d.status };
-      }
-
-      balance += row.correction;
-      minuteBalance += row.correction;
+      const row = dayRow(day, byDay.get(day) || [], infoByDay.get(day) || null, settings, now, interval);
+      row.correction = corrByDay.get(day) || 0;
+      effectTotal += row.effect;
       correctionsTotal += row.correction;
-
-      if (strategy.usesCarry && carryRule !== 'keep' && carry > 0 && past && isLastDayOfMonth(day)) {
-        if (carryRule === 'month-credit') {
-          row.flushCredit = carry;
-          flushCreditTotal += carry;
-          balance += carry;
-        } else if (carryRule === 'month-forfeit') {
-          row.flushForfeit = carry;
-          forfeitedTotal += carry;
-        }
-        carry = 0;
-      }
-
-      row.carryOut = carry;
+      balance += row.effect + row.correction;
       row.balance = balance;
-      row.minuteBalance = minuteBalance;
+      if (row.status === 'incomplete' || row.status === 'conflict') problems.push({ day, status: row.status, issues: row.issues });
       rows.push(row);
     }
   }
 
-  if (preview) preview.balance = balance + preview.diff;
-  if (live) live.minuteBalance = minuteBalance + (live.deviation ?? 0);
-
   return {
     start,
+    interval,
     rows,
     rowsByDay: new Map(rows.map((r) => [r.day, r])),
     startBalance: settings.startBalanceMin || 0,
-    diffTotal,
+    effectTotal,
     correctionsTotal,
-    flushCreditTotal,
-    forfeitedTotal,
     balance,
-    minuteBalance,
-    carry,
-    preview,
-    live,
     problems,
     futureCorrections,
   };
 }
 
-/** Summen über einen Zeitraum (z. B. Woche/Monat) aus den Kontozeilen bzw. Tagesberechnungen. */
+/** Kennzahlen eines Tages: gestempelt (minutengenau) und gebucht (Raster) samt Kontowirkung. */
+export function dayRow(day, intervals, info, settings, now = Date.now(), interval = settings.rounding?.interval || 15) {
+  const d = computeDay(intervals, { now, autoBreak: settings.autoBreak });
+  const b = bookDay(intervals, interval);
+  const autoBooked = b.bookedNetMin != null && settings.autoBreak?.enabled
+    ? calcAutoBreak(b.bookedNetMin, b.bookedBreakMin, settings.autoBreak.rules) : 0;
+  return {
+    day,
+    status: d.status,
+    issues: d.issues,
+    dayType: info?.dayType || null,
+    note: info?.note || '',
+    firstStart: d.firstStart,
+    lastEnd: d.lastEnd,
+    grossMin: d.grossMin,
+    breakMin: d.breakMin,
+    autoBreakMin: d.autoBreakMin,
+    netMin: d.netMin,
+    bookedFirst: b.firstBooked,
+    bookedLast: b.lastBooked,
+    bookedBreakMin: b.bookedBreakMin + autoBooked,
+    bookedNetMin: b.bookedNetMin == null ? null : Math.max(0, b.bookedNetMin - autoBooked),
+    stamps: b.stamps,
+    effect: b.effect,
+    correction: 0,
+    balance: null,
+  };
+}
+
+/** Summen über einen Zeitraum (z. B. Woche/Monat). */
 export function summarize(rows) {
-  const s = { days: 0, workedDays: 0, netMin: 0, breakMin: 0, target: 0, credited: 0, diff: 0, open: 0 };
+  const s = { days: 0, workedDays: 0, netMin: 0, bookedNetMin: 0, breakMin: 0, bookedBreakMin: 0, effect: 0, open: 0 };
   for (const r of rows) {
     s.days += 1;
     s.netMin += r.netMin || 0;
+    s.bookedNetMin += r.bookedNetMin || 0;
     s.breakMin += (r.breakMin || 0) + (r.autoBreakMin || 0);
+    s.bookedBreakMin += r.bookedBreakMin || 0;
+    s.effect += (r.effect || 0) + (r.correction || 0);
     if (r.netMin > 0) s.workedDays += 1;
-    if (r.counted) {
-      s.target += r.target;
-      s.credited += r.credited;
-      s.diff += r.diff;
-    } else if (r.status === 'incomplete' || r.status === 'conflict') s.open += 1;
+    if (r.status === 'incomplete' || r.status === 'conflict') s.open += 1;
   }
   return s;
 }

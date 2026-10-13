@@ -1,10 +1,9 @@
-// Zeitkonto: Saldo, Herleitung, Korrekturen und Tagesverlauf.
+// Zeitkonto: Differenzminuten zwischen gestempelten und gebuchten Zeiten, Korrekturen und Verlauf.
 
 import { h, confirmDialog } from './dom.js';
 import { computeAccount } from '../core/calc.js';
-import { ROUNDING_MODES, CARRY_RULES } from '../core/rounding.js';
 import {
-  fmtDuration, fmtDate, fmtMonth, addMonths, monthKey, todayKey, firstOfMonth, lastOfMonth,
+  fmtDuration, fmtDate, fmtMonth, addMonths, monthKey, todayKey, firstOfMonth, lastOfMonth, timeOfDay,
 } from '../core/time.js';
 import { signed, statusBadge } from './common.js';
 import { editCorrectionDialog, undoToast } from './editors.js';
@@ -13,12 +12,10 @@ export async function renderAccount(app, params) {
   const data = await app.load();
   const now = Date.now();
   const today = todayKey(now);
-  const { settings } = data;
   const acc = computeAccount({ ...data, today, now });
   const mk = /^\d{4}-\d{2}$/.test(params[0] || '') ? params[0] : monthKey(today);
-  const monthRows = acc.rows.filter((r) => r.day >= firstOfMonth(mk) && r.day <= lastOfMonth(mk));
-  const { mode, interval, carryRule } = settings.rounding;
-  const usesCarry = ROUNDING_MODES[mode]?.usesCarry;
+  const monthRows = acc.rows.filter((r) => r.day >= firstOfMonth(mk) && r.day <= lastOfMonth(mk) && (r.status !== 'empty' || r.correction));
+  const grid = acc.interval;
 
   const removeCorrection = async (c) => {
     if (!(await confirmDialog({ title: 'Korrektur löschen?', message: `${fmtDuration(c.minutes, { sign: true })} am ${fmtDate(c.day)} („${c.reason}“)`, confirmText: 'Löschen', danger: true }))) return;
@@ -29,38 +26,33 @@ export async function renderAccount(app, params) {
   };
 
   const corrections = [...data.corrections].sort((a, b) => b.day.localeCompare(a.day));
+  const range = (r) => (r.bookedFirst == null ? '–' : `${timeOfDay(r.bookedFirst)}–${r.bookedLast != null ? timeOfDay(r.bookedLast) : '…'}`);
 
   return h('section', { class: 'view view-account' },
     h('div', { class: 'card balance-card' },
-      h('div', { class: 'stat-label' }, 'Zeitkonto (Saldo)'),
+      h('div', { class: 'stat-label' }, 'Zeitkonto'),
       h('div', { class: 'balance-big', 'data-testid': 'account-balance' }, signed(acc.balance)),
-      usesCarry ? h('div', { class: 'muted', 'data-testid': 'account-carry' }, `Restguthaben (noch nicht angerechnet): ${fmtDuration(acc.carry)}`) : null,
-      h('div', { class: 'muted', 'data-testid': 'account-minutes' }, `Verrechnungskonto minutengenau: ${fmtDuration(acc.minuteBalance, { sign: true })}`),
-      acc.live?.deviation != null ? h('div', { class: 'muted' }, `inklusive heute bis jetzt (gegen Plan): ${fmtDuration(acc.live.minuteBalance, { sign: true })}`) : null),
+      h('div', { class: 'muted' }, `Differenzminuten zur gebuchten ${grid === 15 ? 'Viertelstunde' : `${grid}-Minuten-Zeit`}`)),
 
     acc.problems.length ? h('div', { class: 'notice notice-warn' },
-      h('b', null, `${acc.problems.length} Tag(e) werden nicht gezählt, weil sie unvollständig oder fehlerhaft sind:`),
+      h('b', null, `${acc.problems.length} Tag(e) sind unvollständig oder fehlerhaft:`),
       h('ul', null, acc.problems.map((p) => h('li', null, h('a', { href: `#/tag/${p.day}` }, fmtDate(p.day)), ' – ', p.issues[0]?.message || '')))) : null,
 
     h('div', { class: 'card' },
       h('h2', null, 'Herleitung'),
       h('table', { class: 'calc' }, h('tbody', null,
         h('tr', null, h('th', null, `Anfangssaldo (${fmtDate(acc.start)})`), h('td', null, signed(acc.startBalance))),
-        h('tr', null, h('th', null, '+ Summe Tagesdifferenzen'), h('td', null, signed(acc.diffTotal))),
+        h('tr', null, h('th', null, '+ Differenzminuten'), h('td', null, signed(acc.effectTotal))),
         h('tr', null, h('th', null, '+ Korrekturen'), h('td', null, signed(acc.correctionsTotal))),
-        acc.flushCreditTotal ? h('tr', null, h('th', null, '+ Monatsabschluss-Gutschriften'), h('td', null, signed(acc.flushCreditTotal))) : null,
-        h('tr', { class: 'strong' }, h('th', null, '= Saldo'), h('td', null, signed(acc.balance))),
-        usesCarry ? h('tr', null, h('th', null, 'Restguthaben (separat)'), h('td', { class: 'num' }, fmtDuration(acc.carry))) : null,
-        acc.forfeitedTotal ? h('tr', { class: 'neg' }, h('th', null, 'Verfallen (laut gewählter Regel)'), h('td', { class: 'num' }, fmtDuration(acc.forfeitedTotal))) : null)),
+        h('tr', { class: 'strong' }, h('th', null, '= Zeitkonto'), h('td', null, signed(acc.balance))))),
       h('details', null,
         h('summary', null, 'Wie wird gerechnet?'),
         h('ul', { class: 'explain' },
-          h('li', null, `Verrechnung: ${ROUNDING_MODES[mode]?.label}${mode !== 'exact' ? `, Intervall ${interval} min` : ''}.`),
-          usesCarry ? h('li', null, `Nicht angerechnete Minuten bleiben als Rest erhalten und werden am nächsten gezählten Tag zur Nettozeit addiert. Sobald der Rest zusammen mit der Tageszeit einen vollen ${interval}-Minuten-Block ergibt, wird dieser angerechnet. Restregel: ${CARRY_RULES[carryRule]}.`) : null,
-          h('li', null, 'Tagesdifferenz = angerechnete Zeit − Soll. Die tatsächliche Nettozeit bleibt unverändert gespeichert.'),
-          h('li', null, settings.countEmptyDays ? 'Vergangene Tage ohne Buchung zählen mit 0 Stunden (also −Soll). Urlaub/Krank/Feiertag/Frei im Tag eintragen.' : 'Tage ohne Buchung werden nicht gezählt.'),
-          h('li', null, 'Laufende, unvollständige und fehlerhafte Tage werden erst nach Korrektur gezählt.'),
-          h('li', null, 'Korrekturen wirken direkt auf den Saldo, ohne Rundung.')))),
+          h('li', null, `Gestempelt wird minutengenau. Gebucht wird jede Zeit auf die nächstgelegene volle ${grid === 15 ? 'Viertelstunde' : `${grid}-Minuten-Marke`}.`),
+          h('li', null, 'Die Differenz geht ins Zeitkonto: Kommen 08:50 → gebucht 08:45 = −0:05; Gehen 17:49 → gebucht 17:45 = +0:04. Für Pausen umgekehrt.'),
+          h('li', null, 'In der Buchungsliste kann jede Zeit auf die andere Viertelstunde umgeschaltet werden (z. B. 08:50 → 09:00 = +0:10), um gezielt mit dem Konto zu verrechnen.'),
+          h('li', null, 'Es gibt keine Sollzeit: Kürzere oder längere Tage verändern das Konto nicht.'),
+          h('li', null, 'Korrekturen wirken direkt auf das Konto.')))),
 
     h('div', { class: 'card' },
       h('div', { class: 'card-head' },
@@ -79,18 +71,12 @@ export async function renderAccount(app, params) {
         h('h2', { class: 'nav-title' }, `Verlauf ${fmtMonth(mk)}`),
         h('a', { class: 'btn btn-small', href: `#/konto/${addMonths(mk, 1)}`, 'aria-label': 'Folgemonat' }, '›')),
       monthRows.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'ledger' },
-        h('thead', null, h('tr', null, ['Tag', 'Netto', 'Soll', 'Abw.', usesCarry ? '+Rest' : null, 'Angerechnet', usesCarry ? 'Rest→' : null, 'Diff.', 'Saldo', 'Minuten']
-          .filter(Boolean).map((t) => h('th', null, t)))),
+        h('thead', null, h('tr', null, ['Tag', 'Gebucht', 'Arbeit', 'Diff.', 'Konto'].map((t) => h('th', null, t)))),
         h('tbody', null, monthRows.map((r) => h('tr', { class: 'clickable', onclick: () => app.navigate(`#/tag/${r.day}`) },
           h('td', null, fmtDate(r.day, { year: false })),
-          h('td', { class: 'num' }, r.status === 'empty' ? '–' : fmtDuration(r.netMin)),
-          h('td', { class: 'num' }, fmtDuration(r.target)),
-          h('td', null, r.counted ? signed(r.exactDiff) : ''),
-          usesCarry ? h('td', { class: 'num muted' }, r.counted ? fmtDuration(r.carryIn) : '') : null,
-          h('td', { class: 'num' }, r.counted ? fmtDuration(r.credited) : statusBadge(r.status)),
-          usesCarry ? h('td', { class: 'num muted' }, fmtDuration(r.carryOut)) : null,
-          h('td', null, r.counted ? signed(r.diff) : '', r.correction ? h('div', { class: 'small' }, 'Korr. ', signed(r.correction)) : null, r.flushCredit ? h('div', { class: 'small' }, 'Rest ', signed(r.flushCredit)) : null),
-          h('td', null, signed(r.balance)),
-          h('td', null, signed(r.minuteBalance))))))) : h('p', { class: 'muted' }, 'Keine Einträge in diesem Monat (Konto beginnt am ' + fmtDate(acc.start) + ').')),
+          h('td', { class: 'num' }, range(r)),
+          h('td', { class: 'num' }, r.bookedNetMin == null ? statusBadge(r.status) : fmtDuration(r.bookedNetMin)),
+          h('td', null, signed(r.effect), r.correction ? h('div', { class: 'small' }, 'Korr. ', signed(r.correction)) : null),
+          h('td', null, signed(r.balance))))))) : h('p', { class: 'muted' }, `Keine Buchungen in diesem Monat (Konto beginnt am ${fmtDate(acc.start)}).`)),
   );
 }

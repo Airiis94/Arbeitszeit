@@ -9,7 +9,7 @@ const DAY = '2026-03-02';
 
 function sample() {
   return {
-    settings: settings(DAY, 480, { startBalanceMin: 90 }),
+    settings: settings(DAY, { startBalanceMin: 90 }),
     intervals: [work(DAY, '08:00', '16:40'), pause(DAY, '12:00', '12:30'), pauseMin(DAY, 15), { ...work('2026-03-03', '09:00', '10:00'), deleted: true }],
     dayInfos: [newRecord({ id: `day:${DAY}`, day: DAY, dayType: 'arbeit', targetOverrideMin: null, note: 'Notiz; mit "Zeichen"' })],
     activities: [newRecord({ day: DAY, title: 'Angebot', description: '', minutes: 90, intensity: 'hoch', category: 'Büro' })],
@@ -32,9 +32,8 @@ describe('Export und Import', () => {
     const a = computeAccount({ ...data, ...opts });
     const b = computeAccount({ ...res.backup.data, ...opts });
     assert.equal(a.balance, b.balance);
-    // Netto 8:40 − 0:45 Pausen = 7:55 → 7:45 angerechnet (Rest 0:10), −0:15 Differenz, −0:30 Korrektur
-    assert.equal(b.balance, 90 - 15 - 30);
-    assert.equal(b.carry, 10);
+    // Gehen 16:40 → gebucht 16:45 (−0:05); Anfangssaldo 1:30 − 0:05 − Korrektur 0:30
+    assert.equal(b.balance, 55);
     const sum = backupSummary(res.backup);
     assert.equal(sum.intervals, 3);
     assert.equal(sum.activities, 1);

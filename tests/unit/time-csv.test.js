@@ -71,17 +71,19 @@ describe('CSV-Export', () => {
     assert.equal(csvCell('-5', { text: true }), "'-5");
   });
 
-  test('Tages-CSV enthält Berechnungsspalten', () => {
+  test('Tages-CSV enthält gebuchte und gestempelte Zeiten', () => {
     const day = '2026-03-02';
     const acc = computeAccount({ intervals: [dayWithNet(day, 460)], settings: settings(day), today: day, now: at(day, '23:00') });
     const csv = daysToCsv(acc.rows);
-    assert.ok(csv.startsWith('﻿Datum;Wochentag;Status'));
+    assert.ok(csv.startsWith('\uFEFFDatum;Wochentag;Status'));
     const line = csv.split('\r\n')[1].split(';');
     assert.equal(line[0], '02.03.2026');
-    assert.equal(line[9], '7:40'); // Netto
-    assert.equal(line[13], '7:30'); // Angerechnet
-    assert.equal(line[14], '0:10'); // Rest
-    assert.equal(line[16], '−0:30'); // Differenz
+    assert.equal(line[4], '08:00'); // Kommen gebucht
+    assert.equal(line[5], '15:45'); // Gehen 15:40 → gebucht 15:45
+    assert.equal(line[7], '7:45'); // Arbeitszeit gebucht
+    assert.equal(line[12], '7:40'); // Arbeitszeit gestempelt
+    assert.equal(line[13], '−0:05'); // Differenz
+    assert.equal(line[15], '−0:05'); // Zeitkonto
   });
 
   test('Tätigkeiten-CSV', () => {

@@ -26,11 +26,9 @@ export function pauseMin(day, minutes) {
   return newInterval({ kind: 'break', day, durationMin: minutes }, T0);
 }
 
-/** Einstellungen ab `start`, Soll Mo–Fr `target` Minuten, Wochenende 0. */
-export function settings(start, target = 480, overrides = {}) {
+/** Standard-Einstellungen ab `start` (Buchungsraster 15 min), optional überschrieben. */
+export function settings(start, overrides = {}) {
   const s = defaultSettings(start);
-  s.targetRules[0].minutes = [target, target, target, target, target, 0, 0];
-  delete s.targetRules[0].schedule; // reine Minuten-Sollzeit; Planfälle siehe planSettings()
   return { ...s, ...overrides, rounding: { ...s.rounding, ...(overrides.rounding || {}) } };
 }
 
@@ -46,9 +44,3 @@ export function at(day, hhmm) {
 
 export { addDays };
 
-/** Einstellungen mit Arbeitszeitplan Mo–Fr (Standard 08:45–17:15, Pause 12:00–12:30). */
-export function planSettings(start, entry = { start: '08:45', end: '17:15', breakStart: '12:00', breakEnd: '12:30' }, overrides = {}) {
-  const s = defaultSettings(start);
-  s.targetRules[0].schedule = [0, 1, 2, 3, 4].map(() => ({ ...entry })).concat([null, null]);
-  return { ...s, ...overrides, rounding: { ...s.rounding, ...(overrides.rounding || {}) } };
-}

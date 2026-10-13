@@ -28,6 +28,7 @@ Alle Datensätze außer `kv` haben gemeinsame Felder für spätere Synchronisier
 | `durationMin` | Integer \| `null` | nur für Pausen ohne Uhrzeit |
 | `source` | `"clock"` \| `"manual"` | gestempelt oder manuell eingetragen |
 | `note` | Text | optional |
+| `startRound`, `endRound` | `"down"` \| `"up"` \| `null` | gewählte Viertelstunde je Stempel; `null` = nächstgelegene |
 
 Der aktuelle Stempelzustand (nicht eingestempelt / Arbeit / Pause) wird **nicht gespeichert**,
 sondern aus offenen Intervallen abgeleitet (`core/state.js`). Es darf höchstens eine offene
@@ -36,7 +37,7 @@ Arbeitsphase geben; das wird innerhalb der Schreibtransaktion geprüft.
 ### `dayInfos` – Angaben je Tag
 
 `day`, `dayType` (`arbeit`, `urlaub`, `krank`, `feiertag`, `frei`, `ausgleich`),
-`targetOverrideMin` (individuelles Soll oder `null`), `note`.
+`targetOverrideMin` (aus Version 1.0, nicht mehr verwendet), `note`.
 
 ### `activities` – Tätigkeitsprotokoll (Index: `day`)
 
@@ -54,15 +55,16 @@ Arbeitsphase geben; das wird innerhalb der Schreibtransaktion geprüft.
 
 ### `kv` – Einstellungen und Metadaten
 
-- `settings`: `targetRules[]` (`validFrom`, `minutes[7]` Mo–So), `accountStart`, `startBalanceMin`,
-  `rounding` (`mode`, `interval`, `carryRule`), `countEmptyDays`, `autoBreak`, `theme`,
-  `backupReminderDays`.
+- `settings`: `accountStart`, `startBalanceMin`, `rounding.interval` (Buchungsraster in Minuten),
+  `autoBreak`, `theme`, `backupReminderDays`, `report` (`name`, `trainingStart` für den
+  Ausbildungsnachweis). Felder früherer Versionen (`targetRules`, `countEmptyDays`,
+  `rounding.mode`, `rounding.carryRule`) werden beim Laden entfernt.
 - `meta`: `deviceId`, `createdAt`, `lastChangeAt`, `lastExportAt`, `lastExportName`,
   `lastImportAt` (Backup-/Synchronisationsstatus).
 
 ## Abgeleitete Werte (nicht gespeichert)
 
-Nettozeit, Pausensummen, angerechnete Zeit, Rest, Tagesdifferenz, Saldo, Tagesstatus – siehe
+Gestempelte und gebuchte Arbeitszeit, Pausensummen, Differenzminuten, Zeitkonto, Tagesstatus – siehe
 [ZEITKONTO.md](ZEITKONTO.md).
 
 ## Einheiten

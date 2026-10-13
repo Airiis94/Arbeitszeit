@@ -60,7 +60,7 @@ describe('Ausbildungsnachweis', () => {
     assert.equal(trainingYear('2026-08-24', '2026-09-01'), null);
   });
 
-  test('Woche: Arbeitszeitzeile, Tätigkeiten, Netto als Gesamtstunden, Abteilung = Kategorie', () => {
+  test('Woche: gebuchte Viertelstunden, Tätigkeiten, gebuchte Arbeitszeit als Gesamtstunden, Abteilung = Kategorie', () => {
     const rep = buildWeekReport({ weekStart: '2026-10-14', ...data(), now: at('2026-10-20', '12:00') });
     assert.equal(rep.weekStart, MON);
     assert.equal(rep.weekEnd, '2026-10-17');
@@ -70,7 +70,7 @@ describe('Ausbildungsnachweis', () => {
     assert.equal(rep.days.length, 6); // Sonntag ohne Einträge entfällt
     const mon = rep.days[0];
     assert.equal(mon.label, 'Montag');
-    assert.equal(mon.lines[0].text, 'Arbeitszeit 08:47–17:17, Pause 0:30');
+    assert.equal(mon.lines[0].text, 'Arbeitszeit 08:45–17:15, Pause 0:30');
     assert.equal(mon.lines[0].minutes, null);
     assert.deepEqual(mon.lines.slice(1).map((l) => [l.text, l.minutes, l.dept]), [
       ['Löten', 240, 'Werkstatt'], ['Messen – Oszilloskop <RC> & Co', 150, 'Werkstatt'], ['Unterweisung', 90, 'Ausbildungsleitung']]);
@@ -88,7 +88,7 @@ describe('Ausbildungsnachweis', () => {
     assert.equal(cell('A3').v, 'Ausbildungsnachweis Nr. 7');
     assert.equal(cell('B7').v, 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.');
     assert.equal(cell('A8').v, 'Montag');
-    assert.equal(cell('B8').v, 'Arbeitszeit 08:47–17:17, Pause 0:30');
+    assert.equal(cell('B8').v, 'Arbeitszeit 08:45–17:15, Pause 0:30');
     assert.equal(cell('D9').v, 4);
     assert.equal(cell('D10').v, 2.5);
     assert.equal(cell('F9').v, 'Werkstatt');
@@ -109,7 +109,7 @@ describe('Ausbildungsnachweis', () => {
     assert.match(files['xl/workbook.xml'], /<sheet name="KW42" sheetId="1"/);
     assert.match(files['xl/workbook.xml'], /<sheet name="KW43" sheetId="2"/);
     const s1 = files['xl/worksheets/sheet1.xml'];
-    assert.match(s1, /Arbeitszeit 08:47–17:17, Pause 0:30/);
+    assert.match(s1, /Arbeitszeit 08:45–17:15, Pause 0:30/);
     assert.match(s1, /Messen – Oszilloskop &lt;RC&gt; &amp; Co/);
     assert.match(s1, /<f>SUM\(E12,E17,E23,E28,E33,E36\)<\/f><v>13.5<\/v>/);
     assert.match(s1, /<mergeCell ref="A8:A12"\/>/);

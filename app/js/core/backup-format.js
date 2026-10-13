@@ -14,7 +14,6 @@
 
 import { SCHEMA_VERSION, APP_VERSION, COLLECTIONS, INTENSITIES, DAY_TYPES } from './model.js';
 import { isValidDayKey } from './time.js';
-import { ROUNDING_MODES, CARRY_RULES } from './rounding.js';
 
 export const BACKUP_FORMAT = 'arbeitszeit-backup';
 
@@ -68,6 +67,7 @@ const VALIDATORS = {
     if (!isValidDayKey(r.day)) e.push(`${w}: ungültiger Tag`);
     if (!isTs(r.start) || !isTs(r.end)) e.push(`${w}: ungültiger Zeitstempel`);
     if (r.durationMin != null && (!isInt(r.durationMin) || r.durationMin <= 0)) e.push(`${w}: ungültige Dauer`);
+    for (const f of ['startRound', 'endRound']) if (r[f] != null && !['down', 'up'].includes(r[f])) e.push(`${w}: ungültige Buchungsrichtung`);
     if (!r.deleted && r.kind === 'work' && r.start == null) e.push(`${w}: Arbeitsphase ohne Beginn`);
     if (!r.deleted && r.kind === 'break' && r.start == null && r.durationMin == null) e.push(`${w}: Pause ohne Zeit/Dauer`);
   },
@@ -94,16 +94,10 @@ const VALIDATORS = {
 
 function validateSettings(s, errors) {
   if (!s || typeof s !== 'object') { errors.push('Einstellungen fehlen'); return; }
-  if (!Array.isArray(s.targetRules) || !s.targetRules.length) errors.push('Einstellungen: keine Sollzeit-Regel');
-  else s.targetRules.forEach((r, i) => {
-    if (!isValidDayKey(r.validFrom) || !Array.isArray(r.minutes) || r.minutes.length !== 7 || !r.minutes.every((m) => isInt(m) && m >= 0 && m <= 1440)) {
-      errors.push(`Einstellungen: Sollzeit-Regel ${i + 1} ungültig`);
-    }
-  });
   if (!isValidDayKey(s.accountStart)) errors.push('Einstellungen: ungültiger Kontobeginn');
   if (!isInt(s.startBalanceMin)) errors.push('Einstellungen: ungültiger Anfangssaldo');
-  if (!s.rounding || !ROUNDING_MODES[s.rounding.mode] || !isInt(s.rounding.interval) || s.rounding.interval < 1 || s.rounding.interval > 240 || !CARRY_RULES[s.rounding.carryRule]) {
-    errors.push('Einstellungen: ungültige Verrechnungsregel');
+  if (s.rounding != null && (!isInt(s.rounding.interval) || s.rounding.interval < 1 || s.rounding.interval > 240)) {
+    errors.push('Einstellungen: ungültiges Buchungsraster');
   }
 }
 

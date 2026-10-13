@@ -21,37 +21,30 @@ function toCsv(header, rows) {
 
 const dur = (m) => (m == null ? '' : fmtDuration(m));
 
-/** @param rows Zeilen aus computeAccount (optional gefiltert), @param infoByDay Map Tag → dayInfo */
-export function daysToCsv(rows, infoByDay = new Map()) {
-  const header = ['Datum', 'Wochentag', 'Status', 'Tagesart', 'Beginn', 'Ende', 'Anwesenheit', 'Pausen', 'Auto-Pause',
-    'Netto', 'Netto (Min)', 'Soll', 'Rest Vortag', 'Angerechnet', 'Rest danach', 'Verfallen', 'Tagesdifferenz',
-    'Korrektur', 'Monatsabschluss Gutschrift', 'Saldo', 'Notiz'];
-  const out = rows.map((r) => {
-    const info = infoByDay.get(r.day);
-    return [
-      fmtDate(r.day, { weekday: false }),
-      WEEKDAYS_SHORT[weekdayIndex(r.day)],
-      STATUS_LABELS[r.status] || r.status,
-      csvCell(r.dayType ? DAY_TYPES[r.dayType]?.label : ''),
-      timeOfDay(r.firstStart),
-      timeOfDay(r.lastEnd),
-      dur(r.grossMin),
-      dur(r.breakMin),
-      dur(r.autoBreakMin),
-      dur(r.netMin),
-      r.netMin ?? '',
-      dur(r.target),
-      r.counted ? dur(r.carryIn) : '',
-      r.counted ? dur(r.credited) : '',
-      dur(r.carryOut),
-      r.forfeited || r.flushForfeit ? dur(r.forfeited + r.flushForfeit) : '',
-      r.counted ? fmtDuration(r.diff, { sign: true }) : '',
-      r.correction ? fmtDuration(r.correction, { sign: true }) : '',
-      r.flushCredit ? dur(r.flushCredit) : '',
-      fmtDuration(r.balance, { sign: true }),
-      csvCell(info?.note || '', { text: true }),
-    ];
-  });
+/** @param rows Zeilen aus computeAccount (optional gefiltert) */
+export function daysToCsv(rows) {
+  const header = ['Datum', 'Wochentag', 'Status', 'Tagesart', 'Kommen (gebucht)', 'Gehen (gebucht)', 'Pausen (gebucht)',
+    'Arbeitszeit (gebucht)', 'Arbeitszeit (gebucht, Min)', 'Kommen (gestempelt)', 'Gehen (gestempelt)', 'Pausen (gestempelt)',
+    'Arbeitszeit (gestempelt)', 'Differenz Tag', 'Korrektur', 'Zeitkonto', 'Notiz'];
+  const out = rows.map((r) => [
+    fmtDate(r.day, { weekday: false }),
+    WEEKDAYS_SHORT[weekdayIndex(r.day)],
+    STATUS_LABELS[r.status] || r.status,
+    csvCell(r.dayType ? DAY_TYPES[r.dayType]?.label : ''),
+    timeOfDay(r.bookedFirst),
+    timeOfDay(r.bookedLast),
+    r.status === 'empty' ? '' : dur(r.bookedBreakMin),
+    r.bookedNetMin == null || r.status === 'empty' ? '' : dur(r.bookedNetMin),
+    r.bookedNetMin ?? '',
+    timeOfDay(r.firstStart),
+    timeOfDay(r.lastEnd),
+    r.status === 'empty' ? '' : dur(r.breakMin + (r.autoBreakMin || 0)),
+    r.status === 'empty' ? '' : dur(r.netMin),
+    r.effect ? fmtDuration(r.effect, { sign: true }) : '',
+    r.correction ? fmtDuration(r.correction, { sign: true }) : '',
+    fmtDuration(r.balance, { sign: true }),
+    csvCell(r.note || '', { text: true }),
+  ]);
   return toCsv(header, out);
 }
 

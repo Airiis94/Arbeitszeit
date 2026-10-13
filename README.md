@@ -5,21 +5,24 @@ Eine kleine, robuste Arbeitszeiterfassung als **Progressive Web App (PWA)** für
 Alle Daten bleiben auf dem Gerät; Sicherung und Wiederherstellung erfolgen über eine
 JSON-Datei, die du selbst verwahrst.
 
-- **Heute**: Arbeitsbeginn, Pause, Pause beenden, Feierabend – je ein Tipp. Live-Anzeige von
-  Netto, Pausen, Soll-Ist und Zeitkonto. Pausen per Schnellwahl (15/30/45/60/individuell) nachtragen.
+- **Heute**: Arbeitsbeginn, Pause, Pause beenden, Feierabend – je ein Tipp. Anzeige von Arbeitszeit,
+  Pausen, Differenzminuten und Zeitkonto; Vorschlag „Ausgleichen: gehen um …“. Pausen per
+  Schnellwahl (15/30/45/60/individuell) nachtragen.
 - **Kalender**: Monats- und Wochenansicht mit Statusfarben, Tagesansicht mit allen Buchungen,
   Bearbeitung und Schritt-für-Schritt-Berechnung.
 - **Tätigkeiten**: einfaches Protokoll je Tag mit Dauer, Intensität, Kategorie und Summe.
-- **Verrechnungskonto gegen den Arbeitszeitplan**: Beginn, Ende und feste Pause je Wochentag.
-  Jede Abweichung zählt sofort und minutengenau (08:47 statt 08:45 = −0:02, zwei Minuten länger
-  bleiben = ±0), kumulativ über alle Tage; „Für ±0 gehen um …“ auf „Heute“.
-- **Zeitkonto**: Saldo in vollen Viertelstunden mit Restübertrag, Korrekturen mit Begründung,
-  Tagesverlauf mit minutengenauer Spalte.
+- **Viertelstunden-Buchung**: Gestempelt wird minutengenau, gebucht (Zeiterfassung, Kalender,
+  Ausbildungsnachweis) auf die nächstgelegene Viertelstunde – Kommen, Gehen und Pausen. Pro Buchung
+  per Tipp auf die andere Viertelstunde umschaltbar.
+- **Zeitkonto der Differenzminuten**: enthält nur die Differenz zwischen gestempelter und gebuchter
+  Zeit (Kommen 08:50 → 08:45 = −0:05, Gehen 17:49 → 17:45 = +0:04), kumulativ über alle Tage,
+  plus Anfangssaldo und Korrekturen. Keine Sollzeit – kürzere Tage erzeugen kein Minus.
 - **Ausbildungsnachweis als Excel-Datei** (.xlsx) im Layout der Vorlage
-  „Ausbildungsnachweise_m_Deckblatt“: ein Blatt pro Woche, je Tag „Arbeitszeit 08:47–17:02,
-  Pause 0:30“ und die Tätigkeiten mit Einzelstunden, Gesamtstunden = Netto, Abteilung = Kategorie,
+  „Ausbildungsnachweise_m_Deckblatt“: ein Blatt pro Woche, je Tag „Arbeitszeit 08:45–17:00,
+  Pause 0:30“ (gebuchte Viertelstunden) und die Tätigkeiten mit Einzelstunden, Gesamtstunden =
+  gebuchte Arbeitszeit, Abteilung = Kategorie,
   Nachweis-Nr. und Ausbildungsjahr aus dem Ausbildungsbeginn. Erzeugt auf dem Gerät, ohne Server.
-- **Einstellungen & Sicherung**: Sollzeiten je Wochentag (mit „gültig ab“), Verrechnungsregeln,
+- **Einstellungen & Sicherung**: Kontobeginn, Anfangssaldo, Buchungsraster (Standard 15 min),
   JSON-Export/-Import, CSV-Export, Speicherstatus.
 
 ---
@@ -38,8 +41,8 @@ Danach:
 2. Chrome-Menü **⋮ → „App installieren“** bzw. **„Zum Startbildschirm hinzufügen“** → bestätigen.
 3. Die App über das neue Symbol auf dem Startbildschirm starten. Sie läuft im Vollbild wie eine
    normale App und funktioniert ab jetzt **auch ohne Internet**.
-4. Einmalig: **Einstellungen → Sollarbeitszeit** prüfen (Standard 8:00 Mo–Fr) und
-   **Einstellungen → Zeitkonto** (Kontobeginn, Anfangssaldo).
+4. Einmalig: **Einstellungen → Zeitkonto** (Kontobeginn, Anfangssaldo) und
+   **Einstellungen → Ausbildungsnachweis** (Name, Ausbildungsbeginn).
 5. Empfohlen: **Einstellungen → „Dauerhaften Speicher anfordern“** und gleich eine erste
    Sicherung herunterladen.
 
@@ -144,7 +147,7 @@ app/                    ← wird veröffentlicht
   index.html, manifest.webmanifest, sw.js, css/, icons/
   js/main.js            Start, Router, Service-Worker-Registrierung
   js/core/              reine Logik: time, model, calc (Tag/Zeitkonto), rounding (Verrechnung),
-                        schedule (Arbeitszeitplan, Live-Abweichung), nachweis + xlsx (Excel-Export),
+                        booking (Viertelstunden-Buchung, Differenzminuten), nachweis + xlsx (Excel-Export),
                         state (Stempel-Zustandsautomat), validate, backup-format, csv
   js/db/                db.js (IndexedDB, Migrationen), repo.js (transaktionale Operationen)
   js/ui/                Ansichten: today, calendar, day, activities, account, settings, help, backup, editors
@@ -159,7 +162,7 @@ Die Zeitmessung beruht ausschließlich auf **gespeicherten Zeitstempeln**. Der Z
 20-Sekunden-Timer aktualisiert nur die Anzeige. Schließen, Neuladen, Neustart des Handys oder
 Offline-Phasen ändern nichts an den erfassten Zeiten.
 
-Rechenregeln (Viertelstunden, Rest, Mitternacht, Sommerzeit, unvollständige Tage):
+Rechenregeln (Viertelstunden-Buchung, Zeitkonto, Mitternacht, Sommerzeit):
 **[docs/ZEITKONTO.md](docs/ZEITKONTO.md)**. Datenmodell: **[docs/DATENMODELL.md](docs/DATENMODELL.md)**.
 
 ## 6. Entwicklung und Tests
@@ -198,14 +201,15 @@ der Workflow automatisch.
 - Ob eine per „Teilen“ übergebene Sicherung im Ziel (z. B. Drive) wirklich gespeichert wurde,
   kann der Browser nicht prüfen.
 - Stempelzeiten sind minutengenau (Sekunden werden abgeschnitten).
-- Änderungen an Verrechnungsart/Intervall/Restregel gelten rückwirkend für den gesamten Verlauf
-  (Sollzeiten dagegen datumsbezogen).
+- Eine Änderung des Buchungsrasters gilt rückwirkend für den gesamten Verlauf (das Konto wird
+  aus den gestempelten Zeiten neu berechnet).
 - Kein Startbildschirm-Widget (bräuchte eine native Android-App); App-Verknüpfungen
   „Heute“/„Kalender“ über langes Drücken auf das App-Symbol sind vorhanden.
 - Feiertage werden nicht automatisch erkannt, sondern je Tag als „Feiertag“ markiert.
 - Der Ausbildungsnachweis wird als .xlsx (nicht als altes .xls) erzeugt und enthält nur die
   Wochenblätter, kein Deckblatt. Einzelstunden stehen als Dezimalstunden (1,50 = 1:30).
-- Der Arbeitszeitplan kennt eine feste Pause pro Tag und keine Schichten über Mitternacht.
+- Pro Buchung gleicht die nächstgelegene Viertelstunde höchstens ±7 Minuten aus; größere Beträge
+  werden über mehrere Buchungen oder per Umschalten (bis 14 Minuten) verrechnet.
 
 ## 8. Noch nicht implementiert (mögliche Erweiterungen)
 
