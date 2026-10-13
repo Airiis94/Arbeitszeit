@@ -1,4 +1,5 @@
 // End-to-End-Tests im echten Chromium (Playwright) mit echter IndexedDB und Service Worker.
+// Die App wird wie auf GitHub Pages unter dem Unterpfad /Arbeitszeit/ ausgeliefert.
 // Voraussetzung: `npm install playwright` (bzw. vorhandene Playwright-Installation) und Chromium.
 // Aufruf: npm run test:e2e
 
@@ -10,8 +11,13 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from '../../scripts/serve.js';
 
+// Wie auf GitHub Pages: Die App liegt unter dem Unterpfad /Arbeitszeit/.
+const BASE_PATH = '/Arbeitszeit/';
+const overrides = new Map();
 let server;
 let base;
+let origin;
+let externalRequests = [];
 let browser;
 let context;
 let page;
@@ -21,9 +27,10 @@ const t = (day, hhmm) => new Date(`${day}T${hhmm}:00+01:00`);
 const DAY = '2026-03-02';
 
 before(async () => {
-  server = createServer().listen(0);
+  server = createServer({ base: BASE_PATH, overrides }).listen(0);
   await new Promise((r) => server.once('listening', r));
-  base = `http://localhost:${server.address().port}/`;
+  origin = `http://localhost:${server.address().port}`;
+  base = `${origin}${BASE_PATH}`;
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 });
 
@@ -34,6 +41,12 @@ after(async () => {
 
 beforeEach(async () => {
   context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'de-DE', timezoneId: 'Europe/Berlin', acceptDownloads: true });
+  externalRequests = [];
+  // Datenschutz: Die App darf keine Verbindungen zu fremden Servern aufbauen.
+  context.on('request', (r) => {
+    const u = new URL(r.url());
+    if ((u.protocol === 'http:' || u.protocol === 'https:') && u.origin !== origin) externalRequests.push(r.url());
+  });
   page = await context.newPage();
   page.on('pageerror', (e) => { throw e; });
   await page.clock.install({ time: t(DAY, '07:55') });
@@ -43,6 +56,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await context?.close();
+  overrides.clear();
+  assert.deepEqual(externalRequests, [], 'Anfragen an fremde Server');
 });
 
 async function setTime(date) {
@@ -285,4 +300,137 @@ test('Zusammenführen einer Sicherung überschreibt keine neueren lokalen Daten'
   assert.equal(stats.intervals.keptLocal, 1);
   const work = (await intervals()).find((i) => i.kind === 'work');
   assert.equal(work.end, t(DAY, '17:10').getTime());
+});
+
+// ---------- Veröffentlichung auf GitHub Pages (Unterpfad) und Android ----------
+
+async function waitForServiceWorkerControl() {
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) await page.reload();
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+}
+
+test('Manifest, Icons, Start-URL und Service Worker funktionieren im Unterpfad /Arbeitszeit/', async () => {
+  await waitForServiceWorkerControl();
+  const info = await page.evaluate(async () => {
+    const link = document.querySelector('link[rel=manifest]').href;
+    const res = await fetch(link);
+    const m = await res.json();
+    const abs = (u) => new URL(u, link).href;
+    const icons = [];
+    for (const i of m.icons) {
+      const r = await fetch(abs(i.src));
+      icons.push({ src: abs(i.src), status: r.status, type: r.headers.get('content-type'), sizes: i.sizes });
+    }
+    const reg = await navigator.serviceWorker.getRegistration();
+    return { link, status: res.status, name: m.name, short: m.short_name, display: m.display,
+      start: abs(m.start_url), scope: abs(m.scope), id: abs(m.id), icons, swScope: reg.scope };
+  });
+  assert.equal(info.status, 200);
+  assert.equal(info.link, `${base}manifest.webmanifest`);
+  assert.equal(info.short, 'Arbeitszeit');
+  assert.equal(info.display, 'standalone');
+  assert.equal(info.scope, base);
+  assert.equal(info.id, base);
+  assert.equal(info.start, `${base}#/heute`);
+  assert.equal(info.swScope, base);
+  for (const i of info.icons) {
+    assert.equal(i.status, 200, i.src);
+    assert.ok(i.src.startsWith(base), i.src);
+  }
+  assert.ok(info.icons.some((i) => i.sizes === '512x512' && i.type === 'image/png'));
+  // Chromes eigene Installierbarkeitsprüfung (Grundlage für „App installieren“)
+  const cdp = await context.newCDPSession(page);
+  const { installabilityErrors } = await cdp.send('Page.getInstallabilityErrors');
+  assert.deepEqual(installabilityErrors, []);
+  const { url: manifestUrl, errors } = await cdp.send('Page.getAppManifest');
+  assert.equal(manifestUrl, `${base}manifest.webmanifest`);
+  assert.deepEqual(errors, []);
+  // Adresse ohne abschließenden Schrägstrich leitet weiter (wie GitHub Pages)
+  const p2 = await context.newPage();
+  await p2.goto(base.replace(/\/$/, ''));
+  assert.equal(p2.url().startsWith(base), true);
+  await p2.close();
+});
+
+test('App-Update: Hinweis statt ungefragtem Neuladen, Daten bleiben erhalten', async () => {
+  await waitForServiceWorkerControl();
+  await setTime(t(DAY, '08:00'));
+  await click('btn-start');
+  await waitStatus('Arbeit läuft');
+  await page.evaluate(() => { window.__marker = 'unverändert'; });
+
+  // Neue Version veröffentlichen (wie der Workflow: neue VERSION in sw.js)
+  const sw = await readFile(new URL('../../app/sw.js', import.meta.url), 'utf8');
+  const updated = sw.replace(/^const VERSION = '.*';/m, "const VERSION = 'v-test-update';");
+  assert.notEqual(updated, sw);
+  overrides.set('sw.js', updated);
+  await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
+  await page.waitForSelector('#update-banner');
+  // Laufende Bedienung wurde nicht unterbrochen
+  assert.equal(await page.evaluate(() => window.__marker), 'unverändert');
+  await waitStatus('Arbeit läuft');
+
+  await Promise.all([page.waitForEvent('load'), page.click('#update-banner button')]);
+  await waitStatus('Arbeit läuft');
+  const keys = await page.evaluate(() => caches.keys());
+  assert.deepEqual(keys, ['arbeitszeit-v-test-update']);
+  const list = await intervals();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].start, t(DAY, '08:00').getTime());
+  // Neue Version funktioniert offline
+  await context.setOffline(true);
+  await page.reload();
+  await waitStatus('Arbeit läuft');
+  await context.setOffline(false);
+});
+
+test('Daten überstehen Schließen und erneutes Öffnen der App', async () => {
+  await workday();
+  await page.close();
+  page = await context.newPage();
+  await page.goto(`${base}#/heute`);
+  await page.waitForSelector('[data-testid=status]');
+  assert.equal(await text('net'), '8:10');
+  assert.equal((await intervals()).length, 2);
+});
+
+test('Hilfe & Installation ist über den Kopfbereich erreichbar und mobil lesbar', async () => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await click('help-link');
+  await page.waitForSelector('h1:has-text("Hilfe & Installation")');
+  assert.ok(await page.isVisible(`a.help-url:has-text("${base}")`));
+  assert.ok(await page.isVisible('[data-testid=install-state]'));
+  for (const s of ['App öffnen', 'App installieren', 'App starten', 'Ersteinrichtung', 'Ohne Internet nutzen', 'Daten sichern', 'Wenn etwas nicht klappt']) {
+    assert.ok(await page.isVisible(`.help-step h3:has-text("${s}")`), s);
+  }
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  // Auch aus den Einstellungen erreichbar
+  await page.goto(`${base}#/einstellungen`);
+  await page.click('a:has-text("Hilfe & Installationsanleitung")');
+  await page.waitForSelector('h1:has-text("Hilfe & Installation")');
+});
+
+test('Kein horizontaler Überlauf auf kleinen Handys (360 px)', async () => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await workday();
+  await page.evaluate(async () => {
+    await window.__app.repo.saveActivity({ day: '2026-03-02', title: 'Sehr lange Tätigkeitsbezeichnung ohne Umbruchmöglichkeit', description: 'x', minutes: 60, intensity: 'mittel', category: 'Kategorie' });
+  });
+  const routes = ['heute', 'kalender', 'kalender/woche/2026-03-02', 'kalender/monat/2026-03', `tag/${DAY}`, `taetigkeiten/${DAY}`, 'konto/2026-03', 'einstellungen', 'hilfe'];
+  for (const r of routes) {
+    await page.goto(`${base}#/${r}`);
+    await page.waitForTimeout(250);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 0, `${r}: ${overflow}px horizontaler Überlauf`);
+  }
+  // Navigationsbeschriftungen nicht abgeschnitten
+  const cut = await page.evaluate(() => [...document.querySelectorAll('.bottom-nav a span:last-child')]
+    .filter((s) => s.scrollWidth > s.clientWidth).map((s) => s.textContent));
+  assert.deepEqual(cut, []);
+  // Hauptknöpfe vollständig sichtbar
+  await page.goto(`${base}#/heute`);
+  await page.waitForSelector('[data-testid=btn-start]');
+  const box = await page.locator('[data-testid=btn-start]').boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 360);
 });

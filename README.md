@@ -19,10 +19,13 @@ JSON-Datei, die du selbst verwahrst.
 
 ## 1. Auf dem Android-Smartphone nutzen
 
+Kurzanleitung für Einsteiger: **[INSTALLATION.md](INSTALLATION.md)** – dieselbe Anleitung
+steht in der App oben rechts unter **„Hilfe“** (mit Knopf „App installieren“, wenn Chrome ihn anbietet).
+
 Voraussetzung: Die App ist einmalig unter einer **HTTPS-Adresse** bereitgestellt (siehe Abschnitt 2).
 Danach:
 
-1. Adresse in **Chrome** öffnen, z. B. `https://<dein-github-name>.github.io/arbeitszeit/`.
+1. Adresse in **Chrome** öffnen (bei GitHub Pages: `https://<github-name>.github.io/<repository>/`).
 2. Chrome-Menü **⋮ → „App installieren“** bzw. **„Zum Startbildschirm hinzufügen“** → bestätigen.
 3. Die App über das neue Symbol auf dem Startbildschirm starten. Sie läuft im Vollbild wie eine
    normale App und funktioniert ab jetzt **auch ohne Internet**.
@@ -45,17 +48,22 @@ keine Abhängigkeiten. Jeder statische Webspace mit HTTPS genügt.
 
 ### Variante A (empfohlen): GitHub Pages – automatisch über dieses Repository
 
-Die Pipeline `.github/workflows/pages.yml` testet die App und veröffentlicht `app/` bei jedem
-Push auf `main`.
+Die Pipeline `.github/workflows/pages.yml` testet die App bei jedem Push und veröffentlicht
+`app/` automatisch vom **Standard-Branch** des Repositories (egal wie er heißt).
+Die Service-Worker-Version wird dabei aus dem Inhalt der App berechnet, sodass installierte
+Apps jede neue Version erkennen und den Hinweis „Neue Version verfügbar“ zeigen.
 
-1. Auf github.com im Repository: **Settings → Pages → Build and deployment → Source: „GitHub Actions“**.
-2. Den Code auf den Branch `main` bringen (z. B. Pull Request zusammenführen).
-3. Unter **Actions** warten, bis „Tests und Bereitstellung“ grün ist. Die Adresse steht dann unter
-   Settings → Pages (typisch `https://<name>.github.io/<repository>/`).
+1. Einmalig auf github.com im Repository: **Settings → Pages → Build and deployment →
+   Source: „GitHub Actions“**.
+2. Unter **Actions** den Lauf „Tests und Bereitstellung“ starten (oder einen Commit pushen) und
+   warten, bis er grün ist. Die Adresse steht unter Settings → Pages
+   (typisch `https://<name>.github.io/<repository>/`).
 
 Hinweis: GitHub Pages ist für **öffentliche** Repositories kostenlos; für private Repositories
-ist ein kostenpflichtiger GitHub-Plan nötig. Öffentlich ist dabei nur der **Programmcode** –
-deine Arbeitszeitdaten verlassen nie das Gerät.
+ist ein kostenpflichtiger GitHub-Plan nötig. Öffentlich einsehbar ist dabei nur der
+**Programmcode** – deine Arbeitszeitdaten verlassen nie das Gerät. Trotzdem gilt: **Keine
+Passwörter, Zugangsdaten, Schlüssel oder eigene Arbeitszeit-Sicherungen ins Repository legen.**
+Die App selbst baut keine Verbindungen zu fremden Servern auf (per Test geprüft).
 
 ### Variante B: Netlify / Cloudflare Pages / eigener Webspace
 
@@ -129,7 +137,7 @@ app/                    ← wird veröffentlicht
   js/core/              reine Logik: time, model, calc (Tag/Zeitkonto), rounding (Verrechnung),
                         state (Stempel-Zustandsautomat), validate, backup-format, csv
   js/db/                db.js (IndexedDB, Migrationen), repo.js (transaktionale Operationen)
-  js/ui/                Ansichten: today, calendar, day, activities, account, settings, backup, editors
+  js/ui/                Ansichten: today, calendar, day, activities, account, settings, help, backup, editors
 docs/                   ZEITKONTO.md (Rechenregeln), DATENMODELL.md (Schema, Migrationen, Backup)
 tests/unit/             Node-Tests des Rechenkerns
 tests/e2e/              Browser-Tests (echte IndexedDB, Service Worker, Import/Export)
@@ -148,6 +156,7 @@ Rechenregeln (Viertelstunden, Rest, Mitternacht, Sommerzeit, unvollständige Tag
 
 ```bash
 npm start              # http://localhost:8080/ (localhost gilt als sicherer Kontext)
+node scripts/serve.js 8080 /Arbeitszeit/   # wie GitHub Pages im Unterpfad
 npm test               # Unit-Tests (Node ≥ 20, keine Installation nötig)
 npm install --no-save playwright && npx playwright install chromium
 npm run test:e2e       # Browser-Tests
@@ -159,11 +168,17 @@ Tagesdifferenz, Restübertrag, Verrechnung mehrerer Reste, Invariante „keine M
 (Zufallsdaten), Monatsabschluss-Regeln, Verhinderung doppelter Buchungen (Doppelklick, zweiter
 Tab), Neuladen während laufender Pause, Rückgängig, Export → Löschen → Import, fehlerhafte und
 abgeschnittene Importdateien, Zusammenführen ohne Überschreiben neuerer Daten, Offline-Start.
+Für die Veröffentlichung laufen alle Browser-Tests im GitHub-Pages-Unterpfad `/Arbeitszeit/`;
+zusätzlich geprüft: Chromes Installierbarkeitsprüfung ohne Fehler, Manifest/Icons/Scope,
+App-Update mit Hinweis statt ungefragtem Neuladen und ohne Datenverlust, Daten nach Schließen
+und erneutem Öffnen, keine Anfragen an fremde Server, kein horizontaler Überlauf bei 360 px,
+Hilfe-Seite.
 „Unterbrochene Synchronisierung“ entfällt, da keine Cloud-Synchronisierung implementiert ist;
 stattdessen ist getestet, dass ein fehlgeschlagener Import nichts verändert.
 
-**Neue Version veröffentlichen**: Dateien ändern, in `app/sw.js` die `VERSION` erhöhen
-(neue Dateien auch in `PRECACHE` eintragen – ein Test prüft das), nach `main` pushen.
+**Neue Version veröffentlichen**: Dateien ändern (neue Dateien in `PRECACHE` in `app/sw.js`
+eintragen – ein Test prüft das) und auf den Standard-Branch pushen. Die Cache-Version setzt
+der Workflow automatisch.
 
 ## 7. Bekannte Einschränkungen
 

@@ -116,6 +116,29 @@ p { margin: 8px 0; }
   background: rgba(0, 0, 0, 0.25);
 }
 body.offline .offline-flag { display: inline-block; }
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+.help-link {
+  color: var(--primary-text);
+  text-decoration: none;
+  font-weight: 700;
+  padding: 6px 12px;
+  min-height: 36px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+}
+.help-link.active { background: rgba(0, 0, 0, 0.2); }
+
+/* ---------- Hilfe ---------- */
+
+.help-steps { list-style: none; padding: 14px; }
+.help-step { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.help-step:last-child { border-bottom: none; }
+.help-step h3 { margin: 4px 0; }
+.help-step ul { padding-left: 20px; margin: 6px 0; }
+.help-step li { margin: 4px 0; }
+.help-url { word-break: break-all; font-weight: 700; }
 
 .main {
   max-width: 760px;
@@ -147,7 +170,7 @@ body.offline .offline-flag { display: inline-block; }
   text-decoration: none;
   min-width: 0;
 }
-.bottom-nav a span:last-child { overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
+.bottom-nav a span:last-child { overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; font-size: clamp(0.58rem, 2.85vw, 0.72rem); letter-spacing: -0.01em; }
 .bottom-nav .nav-ico { font-size: 1.35rem; line-height: 1; }
 .bottom-nav a.active { color: var(--primary); font-weight: 700; }
 

@@ -231,6 +231,7 @@ export async function renderSettings(app) {
     }, 'Alle Daten löschen …'));
 
   return h('section', { class: 'view view-settings' },
+    h('a', { class: 'btn btn-block', href: '#/hilfe' }, '❓ Hilfe & Installationsanleitung'),
     backupSection, storageSection, targetSection, accountSection, themeSection, dangerSection,
     h('p', { class: 'muted small center' }, `Arbeitszeit v${APP_VERSION} · Datenformat ${SCHEMA_VERSION} · Gerät ${String(meta.deviceId || '').slice(0, 8)}`,
       h('br'), 'Keine Werbung, kein Tracking, keine Server – alle Daten bleiben auf diesem Gerät.'));

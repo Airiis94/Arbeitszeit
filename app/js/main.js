@@ -8,6 +8,7 @@ import { renderDay } from './ui/day.js';
 import { renderActivities } from './ui/activities.js';
 import { renderAccount } from './ui/account.js';
 import { renderSettings } from './ui/settings.js';
+import { renderHelp } from './ui/help.js';
 
 const ROUTES = {
   heute: { render: renderToday, nav: 'heute', title: 'Heute', live: true },
@@ -16,6 +17,7 @@ const ROUTES = {
   taetigkeiten: { render: renderActivities, nav: 'taetigkeiten', title: 'Tätigkeiten' },
   konto: { render: renderAccount, nav: 'konto', title: 'Zeitkonto' },
   einstellungen: { render: renderSettings, nav: 'einstellungen', title: 'Einstellungen' },
+  hilfe: { render: renderHelp, nav: 'hilfe', title: 'Hilfe & Installation' },
 };
 
 const view = document.getElementById('view');
@@ -27,6 +29,8 @@ let liveTimer = null;
 const app = {
   repo: null,
   busy: false,
+  /** Von Chrome angebotene Installationsaufforderung (beforeinstallprompt), falls verfügbar. */
+  installPrompt: null,
   async load() {
     const data = await this.repo.loadAll();
     applyTheme(data.settings.theme);
@@ -67,7 +71,7 @@ async function render({ keepScroll = false } = {}) {
   const seq = ++renderSeq;
   const { name, params } = parseHash();
   const route = ROUTES[name];
-  document.querySelectorAll('.bottom-nav a').forEach((a) => {
+  document.querySelectorAll('.bottom-nav a, .topbar a[data-nav]').forEach((a) => {
     a.classList.toggle('active', a.dataset.nav === route.nav);
     if (a.dataset.nav === route.nav) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
@@ -154,6 +158,15 @@ function updateOnlineState() {
 
 async function start() {
   window.addEventListener('unhandledrejection', (ev) => app.error(ev.reason));
+  window.addEventListener('beforeinstallprompt', (ev) => {
+    ev.preventDefault();
+    app.installPrompt = ev;
+    if (parseHash().name === 'hilfe') app.rerender();
+  });
+  window.addEventListener('appinstalled', () => {
+    app.installPrompt = null;
+    toast('App wurde installiert. Du findest sie jetzt auf dem Startbildschirm.', { type: 'success', timeout: 8000 });
+  });
   try {
     app.repo = await Repo.open({
       onChange: onDataChanged,
