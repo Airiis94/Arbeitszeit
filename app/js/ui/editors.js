@@ -296,8 +296,8 @@ function memoryPicker(app, form, memory, suggestMin) {
       : [h('p', { class: 'muted small' }, 'Kein passender Eintrag – wird nach dem Speichern aufgenommen.')]));
   }
   render();
-  // Das Bezeichnungsfeld entsteht erst nach dem Zwischenspeicher im Dialog.
-  window.requestAnimationFrame(() => form.elements.title?.addEventListener('input', render));
+  // Tippen in „Bezeichnung“ filtert die Liste (am Formular, da das Feld erst danach entsteht).
+  form.addEventListener('input', (ev) => { if (ev.target.name === 'title') render(); });
   return box;
 }
 
