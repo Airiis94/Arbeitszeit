@@ -39,6 +39,30 @@ describe('Export und Import', () => {
     assert.equal(sum.activities, 1);
   });
 
+  test('gewählte Buchungen und Erfassungsart überstehen Export/Import; Sicherungen älterer Versionen bleiben gültig', async () => {
+    const data = sample();
+    data.settings.trackingMode = 'quarter';
+    data.intervals[0] = { ...data.intervals[0], startBooked: at(DAY, '08:15'), endBooked: at(DAY, '17:00') };
+    data.intervals[2] = { ...data.intervals[2], durationBooked: 30 };
+    const res = await parseBackup(JSON.stringify(await buildBackup(data)));
+    assert.equal(res.ok, true, res.errors.join('\n'));
+    assert.deepEqual(res.backup.data, data);
+    // ältere Sicherung ohne die neuen Felder
+    const old = sample();
+    delete old.settings.trackingMode;
+    const res2 = await parseBackup(JSON.stringify(await buildBackup(old)));
+    assert.equal(res2.ok, true, res2.errors.join('\n'));
+    // ungültige Werte werden gemeldet
+    const bad = sample();
+    bad.settings.trackingMode = 'stunden';
+    bad.intervals[0] = { ...bad.intervals[0], startBooked: 'neun' };
+    bad.intervals[2] = { ...bad.intervals[2], durationBooked: -5 };
+    const all = (await parseBackup(JSON.stringify(await buildBackup(bad)))).errors.join('\n');
+    assert.match(all, /intervals\[0\]: ungültige gebuchte Zeit/);
+    assert.match(all, /intervals\[2\]: ungültige gebuchte Dauer/);
+    assert.match(all, /ungültige Erfassungsart/);
+  });
+
   test('abgeschnittene Datei wird erkannt', async () => {
     const text = JSON.stringify(await buildBackup(sample()));
     const res = await parseBackup(text.slice(0, text.length / 2));

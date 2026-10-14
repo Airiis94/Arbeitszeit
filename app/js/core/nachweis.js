@@ -10,7 +10,7 @@ import {
   addDays, startOfWeek, isoWeek, fmtDate, fmtDuration, fmtTimeRel, WEEKDAYS_LONG, daysBetween, parseDayKey, isValidDayKey,
 } from './time.js';
 import { computeDay, groupByDay, calcAutoBreak } from './calc.js';
-import { bookDay } from './booking.js';
+import { bookDay, bookingInterval } from './booking.js';
 import { DAY_TYPES } from './model.js';
 import { buildXlsx, STYLE } from './xlsx.js';
 
@@ -60,7 +60,7 @@ export function buildWeekReport({ weekStart, intervals = [], activities = [], da
     const day = addDays(ws, i);
     const ivs = byDay.get(day) || [];
     const d = computeDay(ivs, { now, autoBreak: settings.autoBreak });
-    const b = bookDay(ivs, settings.rounding?.interval || 15);
+    const b = bookDay(ivs, bookingInterval(settings));
     // Gebuchte Werte (Viertelstunden); automatische Pause nur, wenn ausdrücklich aktiviert
     const auto = b.bookedNetMin != null && settings.autoBreak?.enabled ? calcAutoBreak(b.bookedNetMin, b.bookedBreakMin, settings.autoBreak.rules) : 0;
     const booked = { items: b.items, bookedBreakMin: b.bookedBreakMin + auto };

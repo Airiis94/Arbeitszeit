@@ -5,7 +5,7 @@
 
 import { fmtDate, fmtDuration, fmtDateTime, fmtTimeRel, todayKey } from './time.js';
 import { computeAccount, dayRow, groupByDay, STATUS_LABELS } from './calc.js';
-import { bookDay } from './booking.js';
+import { bookDay, bookingInterval } from './booking.js';
 import { DAY_TYPES, INTENSITIES } from './model.js';
 
 export const DATA_BEGIN = '===== DATEN FÜR DEN IMPORT (bitte nicht verändern) =====';
@@ -70,7 +70,7 @@ function rangeText(items, kind, day) {
 export function buildTextBackup({ data, backup, now = Date.now() }) {
   const today = todayKey(now);
   const { settings } = data;
-  const interval = settings.rounding?.interval || 15;
+  const interval = bookingInterval(settings);
   const live = (l) => (l || []).filter((r) => !r.deleted);
   const intervals = live(data.intervals);
   const activities = live(data.activities);

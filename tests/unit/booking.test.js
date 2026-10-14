@@ -1,8 +1,8 @@
 import { work, pause, pauseMin, settings, dayWithNet, at, addDays } from './helpers.js';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { bookStamp, bookDuration, bookInterval, bookDay, suggestLeave, gridOptions } from '../../app/js/core/booking.js';
-import { computeAccount, computeDay } from '../../app/js/core/calc.js';
+import { bookStamp, bookDuration, bookInterval, bookDay, suggestLeave, gridOptions, stampChoices, bookingInterval } from '../../app/js/core/booking.js';
+import { computeAccount, computeDay, dayRow, activityCheck } from '../../app/js/core/calc.js';
 import { newRecord, newInterval, touch, normalizeSettings } from '../../app/js/core/model.js';
 import { timeOfDay } from '../../app/js/core/time.js';
 
@@ -162,6 +162,115 @@ describe('Ausgleichen beim Gehen', () => {
     assert.equal(suggestLeave(t('16:10'), -20).effect, 7);
     assert.deepEqual(timeOfDay(suggestLeave(t('16:10'), 0).leave), '16:15');
     assert.deepEqual(timeOfDay(suggestLeave(t('16:00'), 0).leave), '16:00');
+  });
+});
+
+describe('Gebuchte Zeit frei wählen (auf- oder abrunden, Konto nutzen)', () => {
+  const choiceFor = (rec, field) => {
+    const st = bookInterval(rec).stamps.find((x) => x.field === field);
+    return Object.fromEntries(stampChoices(st).map((c) => [st.isDuration ? c.booked : timeOfDay(c.booked), c]));
+  };
+
+  test('Kommen 08:52: 08:45 = −0:07 (Standard), 09:00 = +0:08', () => {
+    const rec = work(MON, '08:52', '17:00');
+    const c = choiceFor(rec, 'start');
+    assert.equal(c['08:45'].effect, -7);
+    assert.equal(c['08:45'].nearest, true);
+    assert.equal(c['09:00'].effect, 8);
+    assert.equal(c['09:00'].nearest, false);
+    // ±2 Stunden zur Auswahl
+    assert.ok(c['06:45'] && c['10:45']);
+    assert.equal(c['10:45'].effect, 113);
+    const chosen = bookInterval({ ...rec, startBooked: t('09:00') });
+    assert.equal(timeOfDay(chosen.start), '09:00');
+    assert.equal(chosen.stamps[0].effect, 8);
+    assert.equal(chosen.stamps[0].manual, true);
+  });
+
+  test('Früher gehen und später buchen: Gehen 17:20 als 17:45 → −0:25 aus dem Konto', () => {
+    const rec = work(MON, '08:45', '17:20');
+    assert.equal(choiceFor(rec, 'end')['17:45'].effect, -25);
+    assert.equal(choiceFor(rec, 'end')['17:15'].effect, 5);
+    const d2 = addDays(MON, 1);
+    const plus = work(MON, '08:30', '17:00'); // 08:30 → +0:00; Startsaldo bringt Guthaben
+    let acc = account([plus, work(d2, '08:45', '17:20')], d2, { settings: { startBalanceMin: 30 } });
+    assert.equal(acc.balance, 35);
+    acc = account([plus, { ...work(d2, '08:45', '17:20'), endBooked: t('17:45', d2) }], d2, { settings: { startBalanceMin: 30 } });
+    assert.equal(acc.balance, 5);
+    assert.equal(acc.rowsByDay.get(d2).bookedNetMin, 9 * 60);
+  });
+
+  test('Pausen: Beginn/Ende und reine Dauer wählbar', () => {
+    const p = pause(MON, '12:03', '12:31');
+    assert.equal(choiceFor(p, 'start')['12:15'].effect, -12); // Pausenbeginn später gebucht = mehr Arbeit gebucht als gearbeitet
+    assert.equal(choiceFor(p, 'end')['12:15'].effect, -16);
+    const d = pauseMin(MON, 20);
+    const c = choiceFor(d, 'start');
+    assert.equal(c[15].nearest, true);
+    assert.equal(c[30].effect, 10);
+    assert.equal(c[0].effect, -20);
+    assert.equal(bookInterval({ ...d, durationBooked: 30 }).durationMin, 30);
+  });
+
+  test('Wahl wird durch ein neues Raster nicht verworfen; Altdaten (startRound) gelten weiter', () => {
+    const rec = { ...work(MON, '08:52', '17:00'), startBooked: t('09:00') };
+    assert.equal(timeOfDay(bookInterval(rec, 30).start), '09:00');
+    assert.equal(timeOfDay(bookInterval({ ...work(MON, '08:52', '17:00'), startRound: 'up' }).start), '09:00');
+  });
+
+  test('Raster 30 Minuten: nur halbe Stunden zur Auswahl', () => {
+    const st = bookInterval(work(MON, '08:52', '17:00'), 30).stamps[0];
+    const list = stampChoices(st, 30).map((c) => timeOfDay(c.booked));
+    assert.ok(list.includes('08:30') && list.includes('09:00') && !list.includes('08:45'));
+  });
+});
+
+describe('Erfassungsart', () => {
+  test('Standard ist Viertelstunden; minutengenau bucht ohne Differenzen', () => {
+    assert.equal(bookingInterval(settings(MON)), 15);
+    assert.equal(bookingInterval(settings(MON, { rounding: { interval: 30 } })), 30);
+    const exact = settings(MON, { trackingMode: 'exact' });
+    assert.equal(bookingInterval(exact), 1);
+    const rec = { ...work(MON, '08:52', '17:23'), endBooked: t('17:45') };
+    const b = bookInterval(rec, 1);
+    assert.deepEqual([timeOfDay(b.start), timeOfDay(b.end)], ['08:52', '17:23']); // Wahl ruht im Minutenmodus
+    assert.deepEqual(b.stamps.map((x) => x.effect), [0, 0]);
+    assert.deepEqual(stampChoices(b.stamps[0], 1), []);
+    const acc = computeAccount({ intervals: [rec], settings: { ...exact, startBalanceMin: 12 }, today: MON, now: t('23:00') });
+    assert.equal(acc.balance, 12);
+  });
+
+  test('Altdaten ohne Erfassungsart → Viertelstunden; ungültige Werte werden ersetzt', () => {
+    assert.equal(normalizeSettings({ accountStart: MON }).trackingMode, 'quarter');
+    assert.equal(normalizeSettings({ accountStart: MON, trackingMode: 'foo' }).trackingMode, 'quarter');
+    assert.equal(normalizeSettings({ accountStart: MON, trackingMode: 'exact' }).trackingMode, 'exact');
+  });
+});
+
+describe('Tätigkeiten = festgelegte Netto-Arbeitszeit', () => {
+  const act = (minutes, day = MON) => newRecord({ day, title: 'x', minutes, intensity: null, category: null });
+
+  test('Ziel ist die gebuchte (gerundete) Netto-Arbeitszeit, nicht die gestempelte', () => {
+    const iv = [work(MON, '08:52', '17:20'), pause(MON, '12:00', '12:30')];
+    const row = dayRow(MON, iv, null, settings(MON), t('23:00'));
+    assert.equal(row.bookedNetMin, 8 * 60); // 08:45–17:15 − 0:30
+    assert.deepEqual(activityCheck(row, [act(240), act(180)]), { target: 480, sum: 420, gap: 60, running: false });
+    assert.equal(activityCheck(row, [act(240), act(240), act(30, addDays(MON, 1))]).gap, 0);
+    assert.equal(activityCheck(row, [act(500)]).gap, -20);
+    assert.equal(activityCheck(row, [{ ...act(500), deleted: true }]).sum, 0);
+    // Gewählte Buchung ändert das Ziel
+    const later = dayRow(MON, [{ ...iv[0], endBooked: t('17:45') }, iv[1]], null, settings(MON), t('23:00'));
+    assert.equal(activityCheck(later, []).target, 8 * 60 + 30);
+  });
+
+  test('minutengenau: Ziel ist die gestempelte Netto-Arbeitszeit; laufender Tag', () => {
+    const exact = settings(MON, { trackingMode: 'exact' });
+    const row = dayRow(MON, [work(MON, '08:52', '17:20'), pause(MON, '12:00', '12:30')], null, exact, t('23:00'));
+    assert.equal(activityCheck(row, []).target, 478);
+    const run = dayRow(MON, [work(MON, '08:00', null)], null, settings(MON), t('10:00'));
+    const chk = activityCheck(run, []);
+    assert.equal(chk.running, true);
+    assert.equal(chk.target, 120);
   });
 });
 

@@ -4,7 +4,7 @@
 import {
   HOUR_MS, minutesBetween, addDays, timeOfDay, fmtDuration,
 } from './time.js';
-import { bookDay } from './booking.js';
+import { bookDay, bookingInterval } from './booking.js';
 
 /** Offene Arbeitsphasen, die länger zurückliegen, gelten als „unvollständig“ (Feierabend vergessen). */
 export const RUNNING_MAX_MS = 24 * HOUR_MS;
@@ -187,7 +187,7 @@ export function computeAccount({ intervals = [], dayInfos = [], corrections = []
   const infoByDay = new Map(dayInfos.filter((d) => !d.deleted).map((d) => [d.day, d]));
   const corrs = corrections.filter((c) => !c.deleted);
   const start = settings.accountStart || today;
-  const interval = settings.rounding?.interval || 15;
+  const interval = bookingInterval(settings);
 
   let balance = settings.startBalanceMin || 0;
   let effectTotal = 0;
@@ -233,7 +233,7 @@ export function computeAccount({ intervals = [], dayInfos = [], corrections = []
 }
 
 /** Kennzahlen eines Tages: gestempelt (minutengenau) und gebucht (Raster) samt Kontowirkung. */
-export function dayRow(day, intervals, info, settings, now = Date.now(), interval = settings.rounding?.interval || 15) {
+export function dayRow(day, intervals, info, settings, now = Date.now(), interval = bookingInterval(settings)) {
   const d = computeDay(intervals, { now, autoBreak: settings.autoBreak });
   const b = bookDay(intervals, interval);
   const autoBooked = b.bookedNetMin != null && settings.autoBreak?.enabled
@@ -275,4 +275,16 @@ export function summarize(rows) {
     if (r.status === 'incomplete' || r.status === 'conflict') s.open += 1;
   }
   return s;
+}
+
+/**
+ * Abgleich der Tätigkeiten eines Tages mit der festgelegten (gebuchten) Netto-Arbeitszeit.
+ * Die Summe der Tätigkeiten soll genau der gebuchten Netto-Arbeitszeit entsprechen.
+ * @returns { target, sum, gap, running } gap > 0: noch zuzuordnen, gap < 0: zu viel
+ */
+export function activityCheck(row, activities) {
+  const running = row.bookedNetMin == null;
+  const target = running ? row.netMin : row.bookedNetMin;
+  const sum = activities.filter((a) => !a.deleted && a.day === row.day).reduce((s, a) => s + a.minutes, 0);
+  return { target, sum, gap: target - sum, running };
 }

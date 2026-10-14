@@ -486,6 +486,18 @@ tr.clickable:active { background: var(--surface-2); }
 .plan-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .plan-fields .field { margin: 4px 0; }
 
+.choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; max-height: 50vh; overflow-y: auto; }
+.choice {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 6px 4px; min-height: 64px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
+}
+.choice b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.choice-after { font-size: 0.7rem; color: var(--muted); }
+.choice-tag { font-size: 0.65rem; color: var(--primary); font-weight: 700; }
+.choice-current { border: 2px solid var(--primary); background: var(--info-bg); }
+
 /* ---------- Formulare ---------- */
 
 .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; min-width: 0; }

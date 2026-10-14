@@ -39,9 +39,18 @@ Danach unter **Heute** einfach **„Arbeitsbeginn“**, **„Pause“** und **�
 
 **Viertelstunden und Zeitkonto:** Gestempelt wird minutengenau, gebucht auf die nächstgelegene volle
 Viertelstunde. Die Differenz landet im **Zeitkonto**: Kommen 08:50 → gebucht 08:45 = **−0:05**,
-Gehen 17:49 → gebucht 17:45 = **+0:04**. Ein Tipp auf eine Zeit in der Buchungsliste bucht die
-andere Viertelstunde (z. B. 09:00 statt 08:45 = +0:10). Unter **Heute** steht, wann du zum
-Ausgleichen gehen kannst. Eine Sollzeit gibt es nicht – kurze Tage erzeugen kein Minus.
+Gehen 17:49 → gebucht 17:45 = **+0:04**. Ein Tipp auf eine Zeit in der Buchungsliste (✎) öffnet die
+Auswahl der gebuchten Zeit: z. B. Kommen 08:52 als 08:45 (−0:07) oder 09:00 (+0:08) buchen, oder am
+Ende des Tages früher gehen und mit Guthaben aus dem Konto bis 17:45 buchen. Jede Wahl zeigt den
+neuen Kontostand. Unter **Heute** steht, wann du zum Ausgleichen gehen kannst. Eine Sollzeit gibt es
+nicht – kurze Tage erzeugen kein Minus.
+
+**Erfassungsart:** Unter **Einstellungen** → **Zeitkonto** → **Erfassungsart** lässt sich statt der
+Viertelstunden auch **minutengenau** erfassen (gebucht = gestempelt, kein Differenzkonto). Die
+gestempelten Zeiten bleiben dabei erhalten; zurückschalten ist jederzeit möglich.
+
+**Tätigkeiten:** Die Tätigkeiten eines Tages sollen zusammen genau die gebuchte Netto-Arbeitszeit
+ergeben. Die App zeigt, wie viel noch zuzuordnen ist, und schlägt den Rest als Dauer vor.
 
 **Ausbildungsnachweis:** **Kalender** → **Woche** → **„Ausbildungsnachweis dieser Woche (Excel)“**
 (oder **Einstellungen** → **Ausbildungsnachweis (Excel)** für mehrere Wochen). Die Datei landet

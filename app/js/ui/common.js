@@ -37,9 +37,9 @@ export function stampText(st, day) {
 
 /**
  * Liste der Arbeitsphasen und Pausen eines Tages (chronologisch) mit gebuchten Viertelstunden.
- * @param booking Ergebnis von bookDay; @param onToggle (stamp) => …  andere Viertelstunde wählen
+ * @param booking Ergebnis von bookDay; @param onChoose (stamp) => …  gebuchte Zeit wählen
  */
-export function entryList(day, dayCalc, { onEdit, onDelete, booking, onToggle } = {}) {
+export function entryList(day, dayCalc, { onEdit, onDelete, booking, onChoose } = {}) {
   const items = [
     ...dayCalc.sessions.map((s) => ({ rec: s, t: s.start ?? 0 })),
     ...dayCalc.breaks.map((b) => ({ rec: b, t: b.start ?? Number.MAX_SAFE_INTEGER })),
@@ -69,13 +69,11 @@ export function entryList(day, dayCalc, { onEdit, onDelete, booking, onToggle } 
         h('span', { class: 'entry-src', title: rec.source === 'clock' ? 'gestempelt' : 'manuell eingetragen' }, rec.source === 'clock' ? '' : 'manuell'),
         onEdit && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Bearbeiten', onclick: () => onEdit(rec) }, '✎'),
         onDelete && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Löschen', onclick: () => onDelete(rec) }, '🗑')),
-      stamps.length ? h('div', { class: 'entry-stamps' }, stamps.map((st) => (st.dir === 'exact' || !onToggle
-        ? h('span', { class: 'stamp' }, stampText(st, day))
-        : h('button', {
-          type: 'button', class: `stamp stamp-btn${st.manual ? ' stamp-manual' : ''}`, 'data-testid': `stamp-${st.field}-${rec.kind}`,
-          title: `Stattdessen ${st.isDuration ? fmtDuration(st.alt) : fmtTimeRel(st.alt, day)} buchen`,
-          onclick: () => onToggle(st),
-        }, stampText(st, day), h('span', { class: 'stamp-alt' }, ` ⇄ ${st.isDuration ? fmtDuration(st.alt) : fmtTimeRel(st.alt, day)}`))))) : null);
+      stamps.length && onChoose ? h('div', { class: 'entry-stamps' }, stamps.map((st) => h('button', {
+        type: 'button', class: `stamp stamp-btn${st.manual ? ' stamp-manual' : ''}`, 'data-testid': `stamp-${st.field}-${rec.kind}`,
+        title: 'Gebuchte Zeit wählen',
+        onclick: () => onChoose(st),
+      }, stampText(st, day), h('span', { class: 'stamp-alt' }, ' ✎')))) : null);
   }));
 }
 

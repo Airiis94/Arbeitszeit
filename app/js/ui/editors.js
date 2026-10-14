@@ -5,6 +5,7 @@ import {
   localTimestamp, timeOfDay, dayKey, parseDuration, fmtDuration, fmtDate, parseTime, todayKey, isValidDayKey,
 } from '../core/time.js';
 import { newInterval, touch, DAY_TYPES, INTENSITIES } from '../core/model.js';
+import { stampChoices } from '../core/booking.js';
 import { ValidationError } from '../db/repo.js';
 
 const err = (msg) => new ValidationError([msg]);
@@ -76,7 +77,7 @@ export function editWorkDialog(app, day, rec = null) {
       if (end != null && end < start) throw err('Das Ende liegt vor dem Beginn. Für Arbeit über Mitternacht „Ende am Folgetag“ ankreuzen.');
       const now = Date.now();
       const next = isNew ? newInterval({ kind: 'work', day, start, end, source: 'manual' }, now)
-        : touch(rec, { start, end }, now);
+        : touch(rec, { start, end, ...resetBooking(rec, { start, end }) }, now);
       const res = await app.repo.saveIntervals([next], { reason: f.get('reason'), now });
       undoToast(app, isNew ? 'Arbeitsphase hinzugefügt.' : 'Arbeitsphase geändert.', res.changes);
     },
@@ -132,7 +133,8 @@ export function editBreakDialog(app, day, rec = null, sessions = []) {
         }
         fields = { start, end, durationMin: null };
       }
-      const next = isNew ? newInterval({ kind: 'break', day, source: 'manual', ...fields }, now) : touch(rec, fields, now);
+      const next = isNew ? newInterval({ kind: 'break', day, source: 'manual', ...fields }, now)
+        : touch(rec, { ...fields, ...resetBooking(rec, fields) }, now);
       const res = await app.repo.saveIntervals([next], { reason: f.get('reason'), now });
       undoToast(app, isNew ? 'Pause eingetragen.' : 'Pause geändert.', res.changes);
     },
@@ -188,28 +190,76 @@ export function editDayInfoDialog(app, day, info) {
   });
 }
 
-/** Andere Viertelstunde für einen Stempel wählen (Umschalten zwischen ab- und aufrunden). */
-export async function toggleStamp(app, intervals, st) {
-  const rec = intervals.find((i) => i.id === st.recId);
-  if (!rec) return;
-  const field = st.field === 'start' ? 'startRound' : 'endRound';
-  // Ist die andere Richtung die automatische (nächstgelegene), wird die manuelle Wahl entfernt.
-  const next = st.manual ? null : st.altDir;
-  try {
-    const res = await app.repo.saveIntervals([touch(rec, { [field]: next })], { reason: 'Viertelstunde gewählt' });
-    undoToast(app, `${st.label} wird jetzt auf ${st.isDuration ? fmtDuration(st.alt) : timeOfDay(st.alt)} gebucht.`, res.changes);
-  } catch (e) { app.error(e); }
+/** Gewählte Buchung eines Stempels zurücksetzen, wenn sich die gestempelte Zeit ändert. */
+function resetBooking(rec, changes) {
+  const out = {};
+  if ('start' in changes && changes.start !== rec.start) Object.assign(out, { startBooked: null, startRound: null });
+  if ('end' in changes && changes.end !== rec.end) Object.assign(out, { endBooked: null, endRound: null });
+  if ('durationMin' in changes && changes.durationMin !== rec.durationMin) Object.assign(out, { durationBooked: null, startRound: null });
+  return out;
 }
+
+/**
+ * Gebuchte Zeit eines Stempels wählen: alle Rastermarken in der Nähe mit ihrer Wirkung auf das
+ * Zeitkonto. So lässt sich z. B. 08:52 als 08:45 (−0:07) oder 09:00 (+0:08) buchen, oder beim Gehen
+ * Guthaben „aufbuchen“ (früher gehen, aber später buchen).
+ * @param balance aktueller Kontostand (Minuten) für die Anzeige „danach“
+ */
+/** Nach dem Öffnen die aktuell gebuchte Zeit in die Mitte der Auswahl scrollen. */
+function scrollToCurrent(grid) {
+  window.requestAnimationFrame(() => grid.querySelector('.choice-current')?.scrollIntoView({ block: 'center' }));
+  return grid;
+}
+
+export function chooseBookingDialog(app, intervals, st, day, interval, balance) {
+  const rec = intervals.find((i) => i.id === st.recId);
+  if (!rec) return null;
+  const choices = stampChoices(st, interval);
+  const fmt = (v) => (st.isDuration ? fmtDuration(v) : timeOfDay(v));
+  const save = async (choice) => {
+    const field = st.isDuration ? 'durationBooked' : st.field === 'start' ? 'startBooked' : 'endBooked';
+    const legacy = st.field === 'start' ? 'startRound' : 'endRound';
+    // Die nächstgelegene Marke ist der Standard – dann wird keine Wahl gespeichert.
+    const value = choice.nearest ? null : choice.booked;
+    const res = await app.repo.saveIntervals([touch(rec, { [field]: value, [legacy]: null })], { reason: 'Gebuchte Zeit gewählt' });
+    undoToast(app, `${st.label} wird als ${fmt(choice.booked)} gebucht (${fmtDuration(choice.effect, { sign: true })}).`, res.changes);
+  };
+  return formDialog({
+    title: `${st.label}: gebuchte Zeit wählen`,
+    submitText: 'Schließen',
+    build: (_form, { close }) => [
+      h('p', null, `Gestempelt: ${fmt(st.actual)} · aktuell gebucht: ${fmt(st.booked)} (${fmtDuration(st.effect, { sign: true })})`),
+      h('p', { class: 'muted small' }, `Zeitkonto jetzt: ${fmtDuration(balance, { sign: true })}. Grün (+) = Minuten kommen aufs Konto (z. B. Freizeit später), rot (−) = Minuten werden vom Konto genommen.`),
+      scrollToCurrent(h('div', { class: 'choice-grid', 'data-testid': 'booking-choices' }, choices.map((c) => {
+        const after = balance - st.effect + c.effect;
+        return h('button', {
+          type: 'button',
+          class: `choice${c.booked === st.booked ? ' choice-current' : ''}${c.nearest ? ' choice-nearest' : ''}`,
+          'data-booked': fmt(c.booked),
+          onclick: async () => {
+            try { await save(c); close(true); } catch (e) { app.error(e); }
+          },
+        },
+        h('b', null, fmt(c.booked)),
+        h('span', { class: `num ${c.effect > 0 ? 'pos' : c.effect < 0 ? 'neg' : ''}` }, fmtDuration(c.effect, { sign: true })),
+        h('span', { class: 'choice-after' }, `Konto ${fmtDuration(after, { sign: true })}`),
+        c.nearest ? h('span', { class: 'choice-tag' }, 'Standard') : null);
+      }))),
+    ],
+    onSubmit: () => true,
+  });
+}
+
 
 // ---------- Tätigkeiten ----------
 
-export function editActivityDialog(app, day, rec = null, categories = []) {
+export function editActivityDialog(app, day, rec = null, categories = [], suggestMin = null) {
   const listId = 'cat-list';
   return formDialog({
     title: rec ? 'Tätigkeit bearbeiten' : `Tätigkeit erfassen – ${fmtDate(day)}`,
     build: () => [
       field('Bezeichnung', h('input', { name: 'title', type: 'text', class: 'input', required: true, maxlength: 120, value: rec?.title || '' })),
-      field('Dauer', h('input', { name: 'duration', type: 'text', class: 'input', inputmode: 'decimal', value: rec ? fmtDuration(rec.minutes) : '', placeholder: 'z. B. 90, 1:30 oder 1,5h' })),
+      field('Dauer', h('input', { name: 'duration', type: 'text', class: 'input', inputmode: 'decimal', value: rec ? fmtDuration(rec.minutes) : suggestMin ? fmtDuration(suggestMin) : '', placeholder: 'z. B. 90, 1:30 oder 1,5h' }), suggestMin && !rec ? `Vorschlag: der noch nicht zugeordnete Rest (${fmtDuration(suggestMin)})` : null),
       h('div', { class: 'row-2' },
         field('Intensität', h('select', { name: 'intensity', class: 'input' },
           h('option', { value: '' }, '—'),

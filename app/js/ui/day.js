@@ -1,15 +1,15 @@
 // Tagesansicht: Buchungen bearbeiten und Berechnung nachvollziehen.
 
 import { h } from './dom.js';
-import { computeDay, computeAccount, dayRow } from '../core/calc.js';
-import { bookDay } from '../core/booking.js';
+import { computeDay, computeAccount, dayRow, activityCheck } from '../core/calc.js';
+import { bookDay, bookingInterval } from '../core/booking.js';
 import {
   fmtDuration, fmtDate, addDays, todayKey, isValidDayKey, fmtDateTime, timeOfDay,
 } from '../core/time.js';
 import { DAY_TYPES } from '../core/model.js';
 import { signed, entryList, statusBadge, issueList, timeOrDash, stampText } from './common.js';
 import {
-  editWorkDialog, editBreakDialog, deleteIntervalFlow, editDayInfoDialog, quickBreak, toggleStamp,
+  editWorkDialog, editBreakDialog, deleteIntervalFlow, editDayInfoDialog, quickBreak, chooseBookingDialog,
 } from './editors.js';
 
 const AUDIT_ACTIONS = { create: 'angelegt', update: 'geändert', delete: 'gelöscht', undo: 'rückgängig gemacht' };
@@ -39,7 +39,7 @@ export async function renderDay(app, params) {
   const { settings } = data;
   const dayIntervals = data.intervals.filter((i) => i.day === day);
   const d = computeDay(dayIntervals, { now, autoBreak: settings.autoBreak });
-  const booking = bookDay(dayIntervals, settings.rounding?.interval || 15);
+  const booking = bookDay(dayIntervals, bookingInterval(settings));
   const info = data.dayInfos.find((x) => x.day === day) || null;
   const acc = computeAccount({ ...data, settings, today, now });
   const row = acc.rowsByDay.get(day) || dayRow(day, dayIntervals, info, settings, now);
@@ -62,14 +62,14 @@ export async function renderDay(app, params) {
       h('tr', { class: 'strong' }, h('th', { scope: 'row' }, 'Differenz des Tages'), h('td', null, signed(row.effect))),
       row.correction ? h('tr', null, h('th', { scope: 'row' }, 'Korrektur an diesem Tag'), h('td', null, signed(row.correction))) : null,
       row.balance != null ? h('tr', null, h('th', { scope: 'row' }, 'Zeitkonto nach dem Tag'), h('td', null, signed(row.balance))) : null))
-      : h('p', { class: 'muted' }, d.sessions.length ? 'Alle Zeiten liegen genau auf der Viertelstunde – keine Differenz.' : 'Noch keine Buchungen.'),
+      : h('p', { class: 'muted' }, bookingInterval(settings) === 1 ? 'Minutengenaue Erfassung: gebucht wird genau wie gestempelt, es entstehen keine Differenzminuten.' : d.sessions.length ? 'Alle Zeiten liegen genau auf der Viertelstunde – keine Differenz.' : 'Noch keine Buchungen.'),
     diffs.length ? h('p', { class: 'muted small' }, 'Die Differenz zwischen gestempelter und gebuchter Viertelstunde geht ins Zeitkonto. In der Liste oben auf eine Zeit tippen, um die andere Viertelstunde zu buchen.') : null);
 
   const sessionsEdit = {
     onEdit: (rec) => (rec.kind === 'work' ? editWorkDialog(app, day, rec) : editBreakDialog(app, day, rec, d.sessions)),
     onDelete: (rec) => deleteIntervalFlow(app, rec),
     booking,
-    onToggle: (st) => toggleStamp(app, data.intervals, st),
+    onChoose: bookingInterval(settings) > 1 ? (st) => chooseBookingDialog(app, data.intervals, st, day, bookingInterval(settings), acc.balance) : null,
   };
 
   return h('section', { class: 'view view-day' },
@@ -106,7 +106,15 @@ export async function renderDay(app, params) {
       h('div', { class: 'card-head' },
         h('h2', null, 'Tätigkeiten'),
         h('a', { class: 'btn btn-small', href: `#/taetigkeiten/${day}` }, 'Öffnen')),
-      h('p', null, acts.length ? `${acts.length} Tätigkeit(en), zusammen ${fmtDuration(actSum)}.` : 'Keine Tätigkeiten dokumentiert.')),
+      h('p', null, acts.length ? `${acts.length} Tätigkeit(en), zusammen ${fmtDuration(actSum)}.` : 'Keine Tätigkeiten dokumentiert.'),
+      (() => {
+        const chk = activityCheck(row, data.activities);
+        if (chk.target === 0 && chk.sum === 0) return null;
+        if (chk.gap === 0) return h('p', { class: 'pos small' }, '✓ entspricht genau der Netto-Arbeitszeit.');
+        return h('p', { class: 'neg small' }, chk.gap > 0
+          ? `Noch ${fmtDuration(chk.gap)} zuzuordnen (Netto-Arbeitszeit ${fmtDuration(chk.target)}).`
+          : `${fmtDuration(-chk.gap)} mehr als die Netto-Arbeitszeit (${fmtDuration(chk.target)}).`);
+      })()),
     h('details', { class: 'card' },
       h('summary', null, `Änderungsprotokoll (${audit.length})`),
       audit.length ? h('ul', { class: 'audit' }, audit.map((a) => h('li', null, auditText(a))))

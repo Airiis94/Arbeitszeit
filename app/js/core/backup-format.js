@@ -69,6 +69,8 @@ const VALIDATORS = {
     if (!isTs(r.start) || !isTs(r.end)) e.push(`${w}: ungültiger Zeitstempel`);
     if (r.durationMin != null && (!isInt(r.durationMin) || r.durationMin <= 0)) e.push(`${w}: ungültige Dauer`);
     for (const f of ['startRound', 'endRound']) if (r[f] != null && !['down', 'up'].includes(r[f])) e.push(`${w}: ungültige Buchungsrichtung`);
+    for (const f of ['startBooked', 'endBooked']) if (r[f] != null && !(isInt(r[f]) && r[f] > 0)) e.push(`${w}: ungültige gebuchte Zeit`);
+    if (r.durationBooked != null && !(isInt(r.durationBooked) && r.durationBooked >= 0)) e.push(`${w}: ungültige gebuchte Dauer`);
     if (!r.deleted && r.kind === 'work' && r.start == null) e.push(`${w}: Arbeitsphase ohne Beginn`);
     if (!r.deleted && r.kind === 'break' && r.start == null && r.durationMin == null) e.push(`${w}: Pause ohne Zeit/Dauer`);
   },
@@ -97,6 +99,7 @@ function validateSettings(s, errors) {
   if (!s || typeof s !== 'object') { errors.push('Einstellungen fehlen'); return; }
   if (!isValidDayKey(s.accountStart)) errors.push('Einstellungen: ungültiger Kontobeginn');
   if (!isInt(s.startBalanceMin)) errors.push('Einstellungen: ungültiger Anfangssaldo');
+  if (s.trackingMode != null && !['quarter', 'exact'].includes(s.trackingMode)) errors.push('Einstellungen: ungültige Erfassungsart');
   if (s.rounding != null && (!isInt(s.rounding.interval) || s.rounding.interval < 1 || s.rounding.interval > 240)) {
     errors.push('Einstellungen: ungültiges Buchungsraster');
   }

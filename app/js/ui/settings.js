@@ -3,7 +3,7 @@
 import { h, field, toast, confirmDialog, formDialog, downloadFile } from './dom.js';
 import { computeAccount } from '../core/calc.js';
 import { daysToCsv, activitiesToCsv } from '../core/csv.js';
-import { GRID_OPTIONS } from '../core/booking.js';
+import { GRID_OPTIONS, TRACKING_MODES } from '../core/booking.js';
 import {
   fmtDuration, parseDuration, fmtDateTime, todayKey, isValidDayKey, monthKey,
   firstOfMonth, lastOfMonth, startOfWeek, addDays,
@@ -158,12 +158,13 @@ export async function renderSettings(app) {
             accountStart: start,
             startBalanceMin: bal,
             rounding: { interval },
+            trackingMode: f.get('trackingMode') === 'exact' ? 'exact' : 'quarter',
             autoBreak: { ...settings.autoBreak, enabled: !!f.get('autoBreak') },
             backupReminderDays: Math.max(1, Number(f.get('reminder')) || 7),
           };
           const ok = await confirmDialog({
             title: 'Regeln übernehmen?',
-            message: 'Das Zeitkonto wird aus den gespeicherten Stempelzeiten neu berechnet – auch für vergangene Tage. Die gestempelten Zeiten selbst bleiben unverändert.',
+            message: 'Das Zeitkonto wird aus den gespeicherten Stempelzeiten neu berechnet – auch für vergangene Tage. Die gestempelten Zeiten und deine gewählten Buchungen bleiben gespeichert.',
             confirmText: 'Übernehmen',
           });
           if (ok) await save(next);
@@ -173,6 +174,9 @@ export async function renderSettings(app) {
     h('div', { class: 'row-2' },
       field('Kontobeginn', h('input', { type: 'date', name: 'accountStart', class: 'input', value: settings.accountStart })),
       field('Anfangssaldo', h('input', { type: 'text', name: 'startBalance', class: 'input', value: fmtDuration(settings.startBalanceMin, { sign: true }) }), 'z. B. +12:30 oder -3:15')),
+    field('Erfassungsart', h('select', { name: 'trackingMode', class: 'input', 'data-testid': 'tracking-mode' },
+      Object.entries(TRACKING_MODES).map(([k, v]) => h('option', { value: k, selected: (settings.trackingMode || 'quarter') === k }, v))),
+    'Viertelstunden: gebucht wird auf das Raster, die Differenzminuten gehen ins Zeitkonto. Minutengenau: gebucht = gestempelt. Wechsel jederzeit möglich: Die gestempelten Zeiten bleiben erhalten, nur die Berechnung ändert sich.'),
     field('Buchungsraster', h('select', { name: 'interval', class: 'input' },
       GRID_OPTIONS.map((m) => h('option', { value: m, selected: (settings.rounding?.interval || 15) === m }, m === 15 ? '15 Minuten (Viertelstunde)' : `${m} Minuten`))),
     'Stempelzeiten werden auf die nächstgelegene Marke gebucht; die Differenz geht ins Zeitkonto.'),

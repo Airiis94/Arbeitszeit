@@ -32,7 +32,7 @@ export async function renderAccount(app, params) {
     h('div', { class: 'card balance-card' },
       h('div', { class: 'stat-label' }, 'Zeitkonto'),
       h('div', { class: 'balance-big', 'data-testid': 'account-balance' }, signed(acc.balance)),
-      h('div', { class: 'muted' }, `Differenzminuten zur gebuchten ${grid === 15 ? 'Viertelstunde' : `${grid}-Minuten-Zeit`}`)),
+      h('div', { class: 'muted' }, grid === 1 ? 'Minutengenaue Erfassung – es entstehen keine Differenzminuten (nur Anfangssaldo und Korrekturen).' : `Differenzminuten zur gebuchten ${grid === 15 ? 'Viertelstunde' : `${grid}-Minuten-Zeit`}`)),
 
     acc.problems.length ? h('div', { class: 'notice notice-warn' },
       h('b', null, `${acc.problems.length} Tag(e) sind unvollständig oder fehlerhaft:`),

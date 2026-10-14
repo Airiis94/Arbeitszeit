@@ -10,10 +10,16 @@ JSON-Datei, die du selbst verwahrst.
   Schnellwahl (15/30/45/60/individuell) nachtragen.
 - **Kalender**: Monats- und Wochenansicht mit Statusfarben, Tagesansicht mit allen Buchungen,
   Bearbeitung und Schritt-für-Schritt-Berechnung.
-- **Tätigkeiten**: einfaches Protokoll je Tag mit Dauer, Intensität, Kategorie und Summe.
+- **Tätigkeiten**: einfaches Protokoll je Tag mit Dauer, Intensität, Kategorie und Summe. Die
+  Tätigkeiten eines Tages sollen genau der festgelegten (gebuchten) Netto-Arbeitszeit entsprechen –
+  die App zeigt, was noch fehlt oder zu viel ist, und schlägt den offenen Rest als Dauer vor.
 - **Viertelstunden-Buchung**: Gestempelt wird minutengenau, gebucht (Zeiterfassung, Kalender,
-  Ausbildungsnachweis) auf die nächstgelegene Viertelstunde – Kommen, Gehen und Pausen. Pro Buchung
-  per Tipp auf die andere Viertelstunde umschaltbar.
+  Ausbildungsnachweis) auf die nächstgelegene Viertelstunde – Kommen, Gehen und Pausen. Pro Stempel
+  per Tipp frei wählbar: ab- oder aufrunden oder eine Viertelstunde bis zu 2 Stunden davor/danach
+  (z. B. früher gehen und mit Guthaben aus dem Konto bis 17:45 buchen). Die Auswahl zeigt jeweils
+  die Kontowirkung und den neuen Kontostand.
+- **Erfassungsart** (Einstellungen): „Viertelstunden“ (Standard, wie oben) oder „Minutengenau“
+  (gebucht = gestempelt, kein Differenzkonto). Umschalten jederzeit ohne Datenverlust.
 - **Zeitkonto der Differenzminuten**: enthält nur die Differenz zwischen gestempelter und gebuchter
   Zeit (Kommen 08:50 → 08:45 = −0:05, Gehen 17:49 → 17:45 = +0:04), kumulativ über alle Tage,
   plus Anfangssaldo und Korrekturen. Keine Sollzeit – kürzere Tage erzeugen kein Minus.
@@ -22,7 +28,7 @@ JSON-Datei, die du selbst verwahrst.
   Pause 0:30“ (gebuchte Viertelstunden) und die Tätigkeiten mit Einzelstunden, je Tag Stunden gesamt
   (Arbeit + Pause), Pause und Stunden netto, Wochenarbeitszeit = Summe Stunden netto, Abteilung = Kategorie,
   Nachweis-Nr. und Ausbildungsjahr aus dem Ausbildungsbeginn. Erzeugt auf dem Gerät, ohne Server.
-- **Einstellungen & Sicherung**: Kontobeginn, Anfangssaldo, Buchungsraster (Standard 15 min),
+- **Einstellungen & Sicherung**: Kontobeginn, Anfangssaldo, Erfassungsart, Buchungsraster (Standard 15 min),
   JSON-Export/-Import, CSV-Export, Speicherstatus.
 
 ---
@@ -214,7 +220,9 @@ der Workflow automatisch.
 - Der Ausbildungsnachweis wird als .xlsx (nicht als altes .xls) erzeugt und enthält nur die
   Wochenblätter, kein Deckblatt. Einzelstunden stehen als Dezimalstunden (1,50 = 1:30).
 - Pro Buchung gleicht die nächstgelegene Viertelstunde höchstens ±7 Minuten aus; größere Beträge
-  werden über mehrere Buchungen oder per Umschalten (bis 14 Minuten) verrechnet.
+  werden über mehrere Buchungen oder per freier Wahl der gebuchten Zeit (±2 Stunden) verrechnet.
+- Beim Wechsel auf „Minutengenau“ ruhen gewählte Buchungen; sie gelten wieder, sobald auf
+  „Viertelstunden“ zurückgeschaltet wird.
 
 ## 8. Noch nicht implementiert (mögliche Erweiterungen)
 

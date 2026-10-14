@@ -28,7 +28,9 @@ Alle Datensätze außer `kv` haben gemeinsame Felder für spätere Synchronisier
 | `durationMin` | Integer \| `null` | nur für Pausen ohne Uhrzeit |
 | `source` | `"clock"` \| `"manual"` | gestempelt oder manuell eingetragen |
 | `note` | Text | optional |
-| `startRound`, `endRound` | `"down"` \| `"up"` \| `null` | gewählte Viertelstunde je Stempel; `null` = nächstgelegene |
+| `startBooked`, `endBooked` | Epoch-ms \| `null` | frei gewählte gebuchte Zeit je Stempel; fehlt/`null` = nächstgelegene Marke |
+| `durationBooked` | Integer \| `null` | gewählte gebuchte Dauer einer Pause ohne Uhrzeit |
+| `startRound`, `endRound` | `"down"` \| `"up"` \| `null` | ältere Form der Wahl (wird weiter ausgewertet, beim nächsten Wählen durch `…Booked` ersetzt) |
 
 Der aktuelle Stempelzustand (nicht eingestempelt / Arbeit / Pause) wird **nicht gespeichert**,
 sondern aus offenen Intervallen abgeleitet (`core/state.js`). Es darf höchstens eine offene
@@ -55,7 +57,8 @@ Arbeitsphase geben; das wird innerhalb der Schreibtransaktion geprüft.
 
 ### `kv` – Einstellungen und Metadaten
 
-- `settings`: `accountStart`, `startBalanceMin`, `rounding.interval` (Buchungsraster in Minuten),
+- `settings`: `accountStart`, `startBalanceMin`, `trackingMode` (`quarter` = Viertelstunden/Raster,
+  `exact` = minutengenau; fehlt in älteren Daten → `quarter`), `rounding.interval` (Buchungsraster in Minuten),
   `autoBreak`, `theme`, `backupReminderDays`, `report` (`name`, `trainingStart` für den
   Ausbildungsnachweis). Felder früherer Versionen (`targetRules`, `countEmptyDays`,
   `rounding.mode`, `rounding.carryRule`) werden beim Laden entfernt.

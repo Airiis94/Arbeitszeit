@@ -18,7 +18,19 @@ import { MINUTE_MS } from './time.js';
 export const ROUND_DIRS = ['down', 'up'];
 export const GRID_OPTIONS = [5, 10, 15, 20, 30, 60];
 
-const toGrid = (interval) => (GRID_OPTIONS.includes(interval) ? interval : 15);
+/** Erfassungsarten: auf Raster buchen (Standard) oder minutengenau (keine Differenzminuten). */
+export const TRACKING_MODES = {
+  quarter: 'Viertelstunden + Zeitkonto',
+  exact: 'Minutengenau',
+};
+
+/** Raster in Minuten für die Berechnung: 1 bei minutengenauer Erfassung, sonst das eingestellte Raster. */
+export function bookingInterval(settings) {
+  if (settings?.trackingMode === 'exact') return 1;
+  return settings?.rounding?.interval || 15;
+}
+
+const toGrid = (interval) => (interval === 1 || GRID_OPTIONS.includes(interval) ? interval : 15);
 
 /** Die beiden möglichen Viertelstunden um einen Zeitpunkt (lokale Uhrzeit). */
 export function gridOptions(ms, interval = 15) {
@@ -33,9 +45,14 @@ export function gridOptions(ms, interval = 15) {
 /**
  * Bucht einen Zeitpunkt auf das Raster.
  * @param override 'down' | 'up' | null (null = nächstgelegene; bei Gleichstand abwärts)
+ * @param chosen frei gewählte gebuchte Zeit (Epoch-ms) – hat Vorrang, außer bei minutengenauer Erfassung
  */
-export function bookStamp(ms, override = null, interval = 15) {
+export function bookStamp(ms, override = null, interval = 15, chosen = null) {
   const o = gridOptions(ms, interval);
+  if (chosen != null && o.step > 1) {
+    const dir = chosen < ms ? 'down' : chosen > ms ? 'up' : 'exact';
+    return { booked: chosen, dir, alt: null, altDir: null, manual: chosen !== bookStamp(ms, null, interval).booked, chosen: true };
+  }
   if (o.offset === 0) return { booked: o.down, dir: 'exact', alt: null, altDir: null, manual: false };
   const nearest = o.offset * 2 <= o.step ? 'down' : 'up';
   const dir = ROUND_DIRS.includes(override) ? override : nearest;
@@ -43,9 +60,13 @@ export function bookStamp(ms, override = null, interval = 15) {
   return { booked: o[dir], dir, alt: o[altDir], altDir, manual: dir !== nearest };
 }
 
-/** Bucht eine Dauer (Pause ohne Uhrzeit) auf das Raster. */
-export function bookDuration(min, override = null, interval = 15) {
+/** Bucht eine Dauer (Pause ohne Uhrzeit) auf das Raster. @param chosen frei gewählte Dauer (Minuten) */
+export function bookDuration(min, override = null, interval = 15, chosen = null) {
   const step = toGrid(interval);
+  if (chosen != null && step > 1) {
+    const dir = chosen < min ? 'down' : chosen > min ? 'up' : 'exact';
+    return { booked: chosen, dir, alt: null, altDir: null, manual: chosen !== bookDuration(min, null, interval).booked, chosen: true };
+  }
   const offset = min % step;
   const down = min - offset;
   if (offset === 0) return { booked: min, dir: 'exact', alt: null, altDir: null, manual: false };
@@ -66,19 +87,19 @@ export function bookInterval(rec, interval = 15) {
   const isWork = rec.kind === 'work';
   if (rec.start == null) {
     // Pause nur mit Dauer: längere gebuchte Pause = weniger gebuchte Arbeit → Guthaben
-    const b = bookDuration(rec.durationMin || 0, rec.startRound, interval);
+    const b = bookDuration(rec.durationMin || 0, rec.startRound, interval, rec.durationBooked ?? null);
     return {
       rec, start: null, end: null, durationMin: b.booked,
       stamps: [{ recId: rec.id, field: 'start', kind: rec.kind, label: 'Pausendauer', isDuration: true,
         actual: rec.durationMin, ...b, effect: b.booked - (rec.durationMin || 0) }],
     };
   }
-  const s = bookStamp(rec.start, rec.startRound, interval);
+  const s = bookStamp(rec.start, rec.startRound, interval, rec.startBooked ?? null);
   const stamps = [{ recId: rec.id, field: 'start', kind: rec.kind, label: isWork ? 'Kommen' : 'Pausenbeginn',
     actual: rec.start, ...s, effect: isWork ? mins(s.booked - rec.start) : mins(rec.start - s.booked) }];
   let end = null;
   if (rec.end != null) {
-    const e = bookStamp(rec.end, rec.endRound, interval);
+    const e = bookStamp(rec.end, rec.endRound, interval, rec.endBooked ?? null);
     end = Math.max(e.booked, s.booked); // gebuchtes Ende nie vor gebuchtem Beginn
     stamps.push({ recId: rec.id, field: 'end', kind: rec.kind, label: isWork ? 'Gehen' : 'Pausenende',
       actual: rec.end, ...e, booked: end, effect: isWork ? mins(rec.end - end) : mins(end - rec.end) });
@@ -138,4 +159,35 @@ export function suggestLeave(now, balance, interval = 15) {
     if (leave >= Math.floor(now / MINUTE_MS) * MINUTE_MS) return { leave, booked: q, effect: want };
   }
   return null;
+}
+
+/**
+ * Auswahlmöglichkeiten für die gebuchte Zeit eines Stempels: alle Rastermarken im Bereich
+ * ±`rangeMin` um die gestempelte Zeit, jeweils mit Kontowirkung. Die nächstgelegene ist markiert.
+ * @param st Stempel aus bookInterval (enthält kind, field, actual, isDuration)
+ */
+export function stampChoices(st, interval = 15, rangeMin = 120) {
+  const step = toGrid(interval);
+  if (step <= 1) return [];
+  const effectOf = (booked) => {
+    if (st.isDuration) return booked - st.actual;
+    const delta = mins(booked - st.actual);
+    // Kommen und Pausenende: später gebucht = Guthaben; Gehen und Pausenbeginn: früher gebucht = Guthaben
+    const positiveWhenLater = (st.kind === 'work' && st.field === 'start') || (st.kind === 'break' && st.field === 'end');
+    return positiveWhenLater ? delta : -delta;
+  };
+  const out = [];
+  if (st.isDuration) {
+    const nearest = bookDuration(st.actual, null, step).booked;
+    for (let m = 0; m <= st.actual + rangeMin; m += step) out.push({ booked: m, effect: effectOf(m), nearest: m === nearest });
+    return out;
+  }
+  const nearest = bookStamp(st.actual, null, step).booked;
+  const lo = gridOptions(st.actual - rangeMin * MINUTE_MS, step).down;
+  for (let t = lo; t <= st.actual + rangeMin * MINUTE_MS; t += step * MINUTE_MS) {
+    // Raster nach lokaler Uhrzeit (Sommerzeit): Marke neu bestimmen
+    const q = gridOptions(t, step).down;
+    if (!out.length || out[out.length - 1].booked !== q) out.push({ booked: q, effect: effectOf(q), nearest: q === nearest });
+  }
+  return out;
 }

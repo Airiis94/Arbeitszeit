@@ -3,10 +3,10 @@
 import { h } from './dom.js';
 import { computeDay, computeAccount, dayRow } from '../core/calc.js';
 import { deriveState } from '../core/state.js';
-import { bookDay, suggestLeave } from '../core/booking.js';
+import { bookDay, suggestLeave, bookingInterval } from '../core/booking.js';
 import { fmtDuration, fmtDate, timeOfDay, todayKey, fmtDateTime, HOUR_MS } from '../core/time.js';
 import { stat, signed, entryList, statusBadge, backupState, issueList, stampText } from './common.js';
-import { quickBreak, editBreakDialog, undoToast, toggleStamp } from './editors.js';
+import { quickBreak, editBreakDialog, undoToast, chooseBookingDialog } from './editors.js';
 
 const MODE_LABEL = { idle: 'Nicht eingestempelt', working: 'Arbeit läuft', break: 'Pause läuft' };
 
@@ -15,7 +15,8 @@ export async function renderToday(app) {
   const now = Date.now();
   const today = todayKey(now);
   const { settings } = data;
-  const interval = settings.rounding?.interval || 15;
+  const interval = bookingInterval(settings);
+  const quarter = interval > 1;
   const st = deriveState(data.intervals);
   const workDay = st.day || today;
   const dayIntervals = data.intervals.filter((i) => i.day === workDay);
@@ -93,12 +94,12 @@ export async function renderToday(app) {
       d.openBreak ? `läuft seit ${timeOfDay(d.openBreak.start)}` : `${d.breaks.length} Pause(n)`);
 
   const stampsInfo = booking.stamps.filter((x) => x.effect !== 0).map((x) => stampText(x, workDay));
-  const diffTile = stat('Differenz heute', h('span', { 'data-testid': 'diff' }, signed(booking.effect)),
-    stampsInfo.length ? stampsInfo.join(' · ') : 'keine Differenzminuten', { wide: true });
+  const diffTile = quarter ? stat('Differenz heute', h('span', { 'data-testid': 'diff' }, signed(booking.effect)),
+    stampsInfo.length ? stampsInfo.join(' · ') : 'keine Differenzminuten', { wide: true }) : null;
 
   // Vorschlag zum Ausgleich beim Gehen (nur während der Arbeit)
   let leaveTile = null;
-  if (st.mode !== 'idle') {
+  if (quarter && st.mode !== 'idle') {
     const sug = suggestLeave(now, acc.balance, interval);
     if (sug) {
       const rest = acc.balance + sug.effect;
@@ -110,7 +111,7 @@ export async function renderToday(app) {
   }
 
   const balanceTile = stat('Zeitkonto', h('span', { 'data-testid': 'balance' }, signed(acc.balance)),
-    'Differenzminuten zur gebuchten Viertelstunde, inkl. heute', { wide: true });
+    quarter ? 'Differenzminuten zur gebuchten Viertelstunde, inkl. heute' : 'minutengenaue Erfassung: nur Anfangssaldo und Korrekturen', { wide: true });
 
   return h('section', { class: 'view view-today' },
     h('div', { class: `status-card status-${st.mode}` },
@@ -128,9 +129,9 @@ export async function renderToday(app) {
       h('div', { class: 'card-head' },
         h('h2', null, 'Buchungen'),
         h('a', { class: 'btn btn-small', href: `#/tag/${workDay}` }, 'Tag bearbeiten')),
-      entryList(workDay, d, { booking, onToggle: (s) => toggleStamp(app, data.intervals, s) }),
-      booking.stamps.some((x) => x.dir !== 'exact')
-        ? h('p', { class: 'muted small' }, 'Tipp auf eine Zeit wählt die andere Viertelstunde und verrechnet die Differenz mit dem Zeitkonto.') : null,
+      entryList(workDay, d, { booking, onChoose: quarter ? (s) => chooseBookingDialog(app, data.intervals, s, workDay, interval, acc.balance) : null }),
+      quarter && booking.stamps.length
+        ? h('p', { class: 'muted small' }, 'Tipp auf eine Zeit: gebuchte Viertelstunde wählen (z. B. 08:45 oder 09:00) – die Differenz wird mit dem Zeitkonto verrechnet.') : null,
       h('div', { class: 'card-foot' },
         h('a', { href: `#/taetigkeiten/${workDay}` }, 'Tätigkeit erfassen →'))),
   );

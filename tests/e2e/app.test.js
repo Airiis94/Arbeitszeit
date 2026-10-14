@@ -198,7 +198,22 @@ test('Tätigkeiten erfassen, Summe und Hinweis auf Abweichung', async () => {
   await page.click('dialog button[type=submit]');
   await page.waitForSelector('[data-testid=activity-sum]');
   assert.equal(await text('activity-sum'), '1:30');
-  assert.ok(await page.isVisible('text=keiner Tätigkeit zugeordnet'));
+  // Gebucht 08:00–16:45 mit 0:30 Pause = 8:15 netto → noch 6:45 offen
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('Noch 6:45 Tätigkeiten zuordnen'));
+  // Der nächste Eintrag schlägt den offenen Rest vor
+  await click('add-activity');
+  assert.equal(await page.inputValue('dialog input[name=duration]'), '6:45');
+  await page.fill('dialog input[name=title]', 'Werkstatt');
+  await page.click('dialog button[type=submit]');
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('entsprechen genau'));
+  assert.equal(await text('activity-sum'), '8:15');
+  assert.match(await text('activity-check'), /Festgelegte Netto-Arbeitszeit: 8:15/);
+  // Zu viel erfasst → Hinweis zum Kürzen
+  await click('add-activity');
+  await page.fill('dialog input[name=title]', 'Zu viel');
+  await page.fill('dialog input[name=duration]', '15');
+  await page.click('dialog button[type=submit]');
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('0:15 länger'));
 });
 
 test('Korrektur mit Begründung verändert den Saldo', async () => {
@@ -435,7 +450,7 @@ test('Kein horizontaler Überlauf auf kleinen Handys (360 px)', async () => {
 
 // ---------- Verrechnungskonto gegen den Arbeitszeitplan & Ausbildungsnachweis ----------
 
-test('Zeitkonto: 08:50 → 08:45 (−0:05), umschalten auf 09:00 (+0:10), Gehen 17:49 → 17:45 (+0:04)', async () => {
+test('Zeitkonto: 08:50 → 08:45 (−0:05), andere Viertelstunde wählbar (09:00 = +0:10), Gehen 17:49 → 17:45 (+0:04)', async () => {
   await setTime(t(DAY, '08:50'));
   await click('btn-start');
   await waitStatus('Arbeit läuft');
@@ -448,14 +463,21 @@ test('Zeitkonto: 08:50 → 08:45 (−0:05), umschalten auf 09:00 (+0:10), Gehen 
   assert.equal(await text('leave'), '16:20');
   // Andere Viertelstunde wählen: 09:00 statt 08:45 → +0:10
   await page.click('[data-testid=stamp-start-work]');
+  await page.waitForSelector('[data-testid=booking-choices]');
+  const labels = await page.$$eval('[data-testid=booking-choices] button', (bs) => bs.map((b) => b.dataset.booked));
+  assert.ok(labels.includes('08:30') && labels.includes('08:45') && labels.includes('09:00') && labels.includes('09:15'), labels.join(','));
+  assert.match(await page.textContent('[data-testid=booking-choices] button[data-booked="09:00"]'), /\+0:10.*Konto \+0:10/);
+  await page.click('[data-testid=booking-choices] button[data-booked="09:00"]');
   await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '+0:10');
   const rec = (await intervals())[0];
-  assert.equal(rec.startRound, 'up');
+  assert.equal(rec.startBooked, t(DAY, '09:00').getTime());
   assert.equal(rec.start, t(DAY, '08:50').getTime()); // gestempelte Zeit bleibt unverändert
-  // Zurück auf die nächstgelegene
+  assert.equal(await page.textContent('[data-testid=booked-range]'), '09:00 – läuft');
+  // Zurück auf die nächstgelegene (Standard) → keine Wahl gespeichert
   await page.click('[data-testid=stamp-start-work]');
+  await page.click('[data-testid=booking-choices] button[data-booked="08:45"]');
   await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '−0:05');
-  assert.equal((await intervals())[0].startRound, null);
+  assert.equal((await intervals())[0].startBooked, null);
   // Gehen 17:49 → 17:45: +0:04 → Konto −0:01
   await setTime(t(DAY, '17:49'));
   await click('btn-end');
@@ -468,6 +490,49 @@ test('Zeitkonto: 08:50 → 08:45 (−0:05), umschalten auf 09:00 (+0:10), Gehen 
   const rows = await page.$$eval('[data-testid=deviation] tr', (trs) => trs.map((tr) => tr.textContent));
   assert.ok(rows.some((r) => r.includes('Kommen 08:50 → 08:45') && r.includes('−0:05')), rows.join(' | '));
   assert.ok(rows.some((r) => r.includes('Gehen 17:49 → 17:45') && r.includes('+0:04')), rows.join(' | '));
+});
+
+test('Feierabend früher, aber spätere Viertelstunde buchen (Konto nutzen); Erfassungsart minutengenau', async () => {
+  // Startsaldo +0:30 aus früheren Tagen
+  await page.evaluate(async () => {
+    const s = (await window.__app.repo.loadAll()).settings;
+    await window.__app.repo.saveSettings({ ...s, startBalanceMin: 30 });
+  });
+  await setTime(t(DAY, '08:45'));
+  await click('btn-start');
+  await waitStatus('Arbeit läuft');
+  await setTime(t(DAY, '17:20'));
+  await click('btn-end');
+  await waitStatus('Nicht eingestempelt');
+  assert.equal(await text('balance'), '+0:35'); // Gehen 17:20 → 17:15 = +0:05
+  // Bis 17:45 buchen: −0:25 statt +0:05 → Konto +0:30 − 0:25 = +0:05
+  await page.click('[data-testid=stamp-end-work]');
+  assert.match(await page.textContent('[data-testid=booking-choices] button[data-booked="17:45"]'), /−0:25.*Konto \+0:05/);
+  await page.click('[data-testid=booking-choices] button[data-booked="17:45"]');
+  await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '+0:05');
+  assert.equal(await page.textContent('[data-testid=booked-range]'), '08:45 – 17:45');
+  assert.equal(await text('net'), '9:00'); // gebucht 08:45–17:45, keine Pause gestempelt
+  // Erfassungsart minutengenau: gebucht = gestempelt, kein Differenzkonto
+  await page.goto(`${base}#/einstellungen`);
+  await page.selectOption('[data-testid=tracking-mode]', 'exact');
+  await page.click('form:has([data-testid=tracking-mode]) button[type=submit]');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await page.goto(`${base}#/heute`);
+  await page.waitForSelector('[data-testid=balance]');
+  assert.equal(await text('balance'), '+0:30');
+  assert.equal(await page.textContent('[data-testid=booked-range]'), '08:45 – 17:20');
+  assert.equal(await page.$('[data-testid=diff]'), null);
+  assert.equal(await page.$('[data-testid=stamp-end-work]'), null);
+  // Die gewählte Buchung bleibt gespeichert und gilt wieder nach dem Zurückschalten
+  assert.equal((await intervals())[0].endBooked, t(DAY, '17:45').getTime());
+  await page.goto(`${base}#/einstellungen`);
+  await page.selectOption('[data-testid=tracking-mode]', 'quarter');
+  await page.click('form:has([data-testid=tracking-mode]) button[type=submit]');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await page.goto(`${base}#/heute`);
+  await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '+0:05');
 });
 
 test('Kurzer Tag erzeugt keine Minusstunden', async () => {

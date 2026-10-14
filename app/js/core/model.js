@@ -59,6 +59,8 @@ export function defaultSettings(today = todayKey()) {
     startBalanceMin: 0,
     // Raster der gebuchten Zeiten in Minuten (15 = Viertelstunde)
     rounding: { interval: 15 },
+    // Erfassungsart: 'quarter' = auf Raster buchen (Differenzminuten ins Zeitkonto), 'exact' = minutengenau
+    trackingMode: 'quarter',
     autoBreak: { enabled: false, rules: DEFAULT_AUTO_BREAK_RULES.map((r) => ({ ...r })) },
     theme: 'system',
     backupReminderDays: 7,
@@ -80,5 +82,6 @@ export function normalizeSettings(s, today = todayKey()) {
   delete out.countEmptyDays;
   delete out.rounding.mode;
   delete out.rounding.carryRule;
+  if (out.trackingMode !== 'exact') out.trackingMode = 'quarter';
   return out;
 }
