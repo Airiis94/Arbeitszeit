@@ -75,7 +75,10 @@ export function buildWeekReport({ weekStart, intervals = [], activities = [], da
       lines.push({ text: a.description ? `${a.title} – ${a.description}` : a.title, minutes: a.minutes, dept: a.category || '', info: false });
     }
     if (i === 6 && !lines.length) continue; // Sonntag nur bei Einträgen
-    days.push({ day, label: WEEKDAYS_LONG[i], lines, netMin, minRows: MIN_ROWS[i] });
+    // Stunden gesamt = Arbeitszeit + Pause (gebucht); erst nach Feierabend, sonst 0
+    const breakMin = b.bookedNetMin == null ? 0 : booked.bookedBreakMin;
+    const worked = d.sessions.length > 0;
+    days.push({ day, label: WEEKDAYS_LONG[i], lines, netMin, breakMin, grossMin: netMin + breakMin, worked, minRows: MIN_ROWS[i] });
   }
   const report = settings.report || {};
   return {
@@ -87,39 +90,47 @@ export function buildWeekReport({ weekStart, intervals = [], activities = [], da
     name: report.name || '',
     days,
     totalMin: days.reduce((s, x) => s + x.netMin, 0),
+    totalBreakMin: days.reduce((s, x) => s + x.breakMin, 0),
+    totalGrossMin: days.reduce((s, x) => s + x.grossMin, 0),
   };
 }
 
 const hours = (min) => Math.round((min / 60) * 10000) / 10000;
 
-/** Wandelt einen Wochenbericht in ein Tabellenblatt (Layout der Vorlage). */
+/**
+ * Wandelt einen Wochenbericht in ein Tabellenblatt (Layout der Vorlage, erweitert um
+ * „Stunden gesamt“ = Arbeitszeit + Pause, „Pause“ und „Stunden netto“ = reine Arbeitszeit).
+ * Die Wochenarbeitszeit ist die Summe der Stunden netto aller Tage.
+ */
 export function weekSheet(rep, sheetName) {
   const cells = [];
   const merges = [];
-  const rowHeights = { 3: 22, 7: 26 };
+  const rowHeights = { 3: 22, 7: 30 };
   const put = (ref, v, style, f) => cells.push({ ref, v, style, f });
 
   put('C1', `Name: ${rep.name || '____________________________'}`, STYLE.plain);
-  merges.push('C1:G1');
+  merges.push('C1:I1');
   put('A3', `Ausbildungsnachweis Nr. ${rep.nr ?? '______'}`, STYLE.title);
   merges.push('A3:B3');
   put('C3', `für die Woche vom ${fmtDate(rep.weekStart, { weekday: false })} bis ${fmtDate(rep.weekEnd, { weekday: false })}`, STYLE.plain);
-  merges.push('C3:G3');
+  merges.push('C3:I3');
   put('C5', `Ausbildungsjahr: ${rep.year ? `${rep.year}.` : '______'}   (KW ${rep.kw})`, STYLE.plain);
-  merges.push('C5:G5');
+  merges.push('C5:I5');
 
   put('A7', '', STYLE.header);
   put('B7', 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.', STYLE.header);
   put('C7', '', STYLE.header);
   merges.push('B7:C7');
   put('D7', 'Einzel-stunden', STYLE.header);
-  put('E7', 'Gesamt-stunden', STYLE.header);
-  put('F7', 'Ausbildungsabteilung', STYLE.header);
-  put('G7', '', STYLE.header);
-  merges.push('F7:G7');
+  put('E7', 'Stunden gesamt', STYLE.header);
+  put('F7', 'Pause', STYLE.header);
+  put('G7', 'Stunden netto', STYLE.header);
+  put('H7', 'Ausbildungsabteilung', STYLE.header);
+  put('I7', '', STYLE.header);
+  merges.push('H7:I7');
 
   let r = 8;
-  const totalRefs = [];
+  const lastRows = [];
   for (const day of rep.days) {
     const n = Math.max(day.minRows, day.lines.length);
     const first = r;
@@ -133,30 +144,47 @@ export function weekSheet(rep, sheetName) {
       merges.push(`B${row}:C${row}`);
       put(`D${row}`, line?.minutes != null ? hours(line.minutes) : '', STYLE.hours);
       put(`E${row}`, '', STYLE.hours);
-      put(`F${row}`, line?.dept || '', STYLE.text);
-      put(`G${row}`, '', STYLE.text);
-      merges.push(`F${row}:G${row}`);
+      put(`F${row}`, '', STYLE.hours);
+      put(`G${row}`, '', STYLE.hours);
+      put(`H${row}`, line?.dept || '', STYLE.text);
+      put(`I${row}`, '', STYLE.text);
+      merges.push(`H${row}:I${row}`);
       const len = line ? line.text.length : 0;
-      if (len > 52) rowHeights[row] = 12.75 * Math.min(4, Math.ceil(len / 52));
+      if (len > 46) rowHeights[row] = 12.75 * Math.min(4, Math.ceil(len / 46));
     }
     merges.push(`A${first}:A${last}`);
-    // Gesamtstunden = Netto-Arbeitszeit des Tages (unterste Zeile des Tagesblocks, wie in der Vorlage)
-    put(`E${last}`, hours(day.netMin), STYLE.totalHours);
-    totalRefs.push(`E${last}`);
+    // Tageswerte in der untersten Zeile des Tagesblocks (wie „Gesamtstunden“ in der Vorlage)
+    if (day.worked) {
+      put(`E${last}`, hours(day.grossMin), STYLE.dayHours);
+      put(`F${last}`, hours(day.breakMin), STYLE.dayHours);
+    }
+    put(`G${last}`, hours(day.netMin), STYLE.totalHours);
+    lastRows.push(last);
     r = last + 1;
   }
-  put(`C${r}`, 'Gesamtstunden', STYLE.rightBold);
-  merges.push(`C${r}:D${r}`);
-  put(`E${r}`, hours(rep.totalMin), STYLE.totalHours, `SUM(${totalRefs.join(',')})`);
+  const sum = (col) => `SUM(${lastRows.map((x) => `${col}${x}`).join(',')})`;
+  put(`B${r}`, 'Summe der Woche', STYLE.weekLabel);
+  put(`C${r}`, '', STYLE.weekLabel);
+  put(`D${r}`, '', STYLE.weekLabel);
+  merges.push(`B${r}:D${r}`);
+  put(`E${r}`, hours(rep.totalGrossMin), STYLE.dayHours, sum('E'));
+  put(`F${r}`, hours(rep.totalBreakMin), STYLE.dayHours, sum('F'));
+  put(`G${r}`, hours(rep.totalMin), STYLE.totalHours, sum('G'));
   rowHeights[r] = 18;
+  r += 1;
+  put(`B${r}`, 'Wochenarbeitszeit (Summe Stunden netto)', STYLE.weekLabel);
+  for (const c of ['C', 'D', 'E', 'F']) put(`${c}${r}`, '', STYLE.weekLabel);
+  merges.push(`B${r}:F${r}`);
+  put(`G${r}`, hours(rep.totalMin), STYLE.totalHours, sum('G'));
+  rowHeights[r] = 20;
 
   put(`A${r + 2}`, 'Für die Richtigkeit', STYLE.italic);
   put(`A${r + 5}`, '________    _______________________________', STYLE.plain);
-  put(`D${r + 5}`, '________    ________________________', STYLE.plain);
+  put(`E${r + 5}`, '________    ________________________', STYLE.plain);
   put(`A${r + 6}`, 'Datum               Unterschrift des Auszubildenden', STYLE.small);
-  put(`D${r + 6}`, 'Datum               Unterschrift des Ausbilders', STYLE.small);
+  put(`E${r + 6}`, 'Datum               Unterschrift des Ausbilders', STYLE.small);
 
-  return { name: sheetName, cols: [5, 42, 12, 7, 8, 3, 18], rowHeights, cells, merges };
+  return { name: sheetName, cols: [5, 36, 9, 7, 7.5, 7, 7.5, 3, 16], rowHeights, cells, merges };
 }
 
 /** Alle Wochen (Montag) im Zeitraum [from, to]. */

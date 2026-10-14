@@ -505,6 +505,9 @@ test('Ausbildungsnachweis als Excel aus der Wochenansicht und den Einstellungen'
   const text = bytes.toString('utf8');
   assert.match(text, /<sheet name="KW10"/);
   assert.match(text, /Arbeitszeit 08:00–16:45, Pause 0:30/);
+  assert.match(text, /Stunden gesamt/);
+  assert.match(text, /Stunden netto/);
+  assert.match(text, /Wochenarbeitszeit \(Summe Stunden netto\)/);
   assert.match(text, /Löten/);
   assert.match(text, /Werkstatt/);
 
@@ -547,7 +550,7 @@ test('Sicherung teilen: als .txt (Chrome lehnt JSON ab), Ausweichen auf Download
   await page.evaluate(() => { window.__rejectShare = true; });
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Sicherung teilen")')]);
   assert.match(dl.suggestedFilename(), /\.json$/);
-  assert.ok(await page.isVisible('text=Teilen wurde vom Browser abgelehnt'));
+  await page.waitForSelector('text=Teilen wurde vom Browser abgelehnt'); // Hinweis folgt nach dem Download
 
   // Geteilte .txt-Datei lässt sich wieder importieren
   const dir = await mkdtemp(join(tmpdir(), 'az-'));

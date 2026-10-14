@@ -81,23 +81,38 @@ describe('Ausbildungsnachweis', () => {
     assert.equal(rep.totalMin, 480 + 330);
   });
 
-  test('Tabellenblatt: Block wächst, Summenformel, Layout der Vorlage', () => {
+  test('Tabellenblatt: Stunden gesamt / Pause / Stunden netto, Wochenarbeitszeit = Summe netto', () => {
     const rep = buildWeekReport({ weekStart: MON, ...data(), now: at('2026-10-20', '12:00') });
     const sh = weekSheet(rep, 'KW42');
     const cell = (ref) => sh.cells.filter((c) => c.ref === ref).pop();
     assert.equal(cell('A3').v, 'Ausbildungsnachweis Nr. 7');
     assert.equal(cell('B7').v, 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.');
+    assert.deepEqual(['D7', 'E7', 'F7', 'G7', 'H7'].map((r) => cell(r).v),
+      ['Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung']);
     assert.equal(cell('A8').v, 'Montag');
     assert.equal(cell('B8').v, 'Arbeitszeit 08:45–17:15, Pause 0:30');
     assert.equal(cell('D9').v, 4);
     assert.equal(cell('D10').v, 2.5);
-    assert.equal(cell('F9').v, 'Werkstatt');
-    assert.equal(cell('E12').v, 8); // Gesamtstunden Montag (unterste Zeile des Blocks)
+    assert.equal(cell('H9').v, 'Werkstatt');
+    // Montag (unterste Zeile des Blocks): gebucht 08:45–17:15 = 8,5 h gesamt, 0,5 h Pause, 8 h netto
+    assert.deepEqual(['E12', 'F12', 'G12'].map((r) => cell(r).v), [8.5, 0.5, 8]);
+    // Dienstag 07:30–13:00 ohne Pause
+    assert.deepEqual(['E17', 'F17', 'G17'].map((r) => cell(r).v), [5.5, 0, 5.5]);
+    // Tag ohne Arbeit: nur Stunden netto 0
+    assert.equal(cell('E28').v, '');
+    assert.equal(cell('G28').v, 0);
     assert.ok(sh.merges.includes('A8:A12'));
     assert.ok(sh.merges.includes('A18:A23')); // Mittwoch: 6 Zeilen statt 5
-    const total = sh.cells.find((c) => c.f);
-    assert.match(total.f, /^SUM\(E12,E17,E23,E28,E33,E36\)$/);
-    assert.equal(total.v, 13.5);
+    const sums = sh.cells.filter((c) => c.f);
+    assert.deepEqual(sums.map((c) => [c.ref, c.f, c.v]), [
+      ['E37', 'SUM(E12,E17,E23,E28,E33,E36)', 14],
+      ['F37', 'SUM(F12,F17,F23,F28,F33,F36)', 0.5],
+      ['G37', 'SUM(G12,G17,G23,G28,G33,G36)', 13.5],
+      ['G38', 'SUM(G12,G17,G23,G28,G33,G36)', 13.5],
+    ]);
+    assert.equal(cell('B38').v, 'Wochenarbeitszeit (Summe Stunden netto)');
+    // Stunden gesamt = Pause + Stunden netto an jedem Tag
+    for (const d of rep.days) assert.equal(d.grossMin, d.netMin + d.breakMin);
   });
 
   test('Excel-Datei: gültiges ZIP, ein Blatt pro Woche, Sonderzeichen maskiert', () => {
@@ -111,7 +126,7 @@ describe('Ausbildungsnachweis', () => {
     const s1 = files['xl/worksheets/sheet1.xml'];
     assert.match(s1, /Arbeitszeit 08:45–17:15, Pause 0:30/);
     assert.match(s1, /Messen – Oszilloskop &lt;RC&gt; &amp; Co/);
-    assert.match(s1, /<f>SUM\(E12,E17,E23,E28,E33,E36\)<\/f><v>13.5<\/v>/);
+    assert.match(s1, /<f>SUM\(G12,G17,G23,G28,G33,G36\)<\/f><v>13.5<\/v>/);
     assert.match(s1, /<mergeCell ref="A8:A12"\/>/);
     assert.match(s1, /paperSize="9"/);
   });

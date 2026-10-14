@@ -19,8 +19,8 @@ JSON-Datei, die du selbst verwahrst.
   plus Anfangssaldo und Korrekturen. Keine Sollzeit – kürzere Tage erzeugen kein Minus.
 - **Ausbildungsnachweis als Excel-Datei** (.xlsx) im Layout der Vorlage
   „Ausbildungsnachweise_m_Deckblatt“: ein Blatt pro Woche, je Tag „Arbeitszeit 08:45–17:00,
-  Pause 0:30“ (gebuchte Viertelstunden) und die Tätigkeiten mit Einzelstunden, Gesamtstunden =
-  gebuchte Arbeitszeit, Abteilung = Kategorie,
+  Pause 0:30“ (gebuchte Viertelstunden) und die Tätigkeiten mit Einzelstunden, je Tag Stunden gesamt
+  (Arbeit + Pause), Pause und Stunden netto, Wochenarbeitszeit = Summe Stunden netto, Abteilung = Kategorie,
   Nachweis-Nr. und Ausbildungsjahr aus dem Ausbildungsbeginn. Erzeugt auf dem Gerät, ohne Server.
 - **Einstellungen & Sicherung**: Kontobeginn, Anfangssaldo, Buchungsraster (Standard 15 min),
   JSON-Export/-Import, CSV-Export, Speicherstatus.
