@@ -51,6 +51,9 @@ gestempelten Zeiten bleiben dabei erhalten; zurückschalten ist jederzeit mögli
 
 **Tätigkeiten:** Die Tätigkeiten eines Tages sollen zusammen genau die gebuchte Netto-Arbeitszeit
 ergeben. Die App zeigt, wie viel noch zuzuordnen ist, und schlägt den Rest als Dauer vor.
+Wiederkehrende Tätigkeiten müssen nicht neu eingegeben werden: Beim Erfassen stehen oben alle bisher
+erfassten Tätigkeiten im **Zwischenspeicher** – antippen übernimmt Bezeichnung, Dauer, Kategorie und
+Beschreibung. Tippen in „Bezeichnung“ sucht in der Liste, ✕ entfernt einen Eintrag aus der Liste.
 
 **Ausbildungsnachweis:** **Kalender** → **Woche** → **„Ausbildungsnachweis dieser Woche (Excel)“**
 (oder **Einstellungen** → **Ausbildungsnachweis (Excel)** für mehrere Wochen). Die Datei landet

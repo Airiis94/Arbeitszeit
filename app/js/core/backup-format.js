@@ -100,6 +100,10 @@ function validateSettings(s, errors) {
   if (!isValidDayKey(s.accountStart)) errors.push('Einstellungen: ungültiger Kontobeginn');
   if (!isInt(s.startBalanceMin)) errors.push('Einstellungen: ungültiger Anfangssaldo');
   if (s.trackingMode != null && !['quarter', 'exact'].includes(s.trackingMode)) errors.push('Einstellungen: ungültige Erfassungsart');
+  if (s.activityMemoryHidden != null && !(Array.isArray(s.activityMemoryHidden)
+    && s.activityMemoryHidden.every((x) => x && typeof x.key === 'string' && isInt(x.at)))) {
+    errors.push('Einstellungen: ungültiger Zwischenspeicher der Tätigkeiten');
+  }
   if (s.rounding != null && (!isInt(s.rounding.interval) || s.rounding.interval < 1 || s.rounding.interval > 240)) {
     errors.push('Einstellungen: ungültiges Buchungsraster');
   }

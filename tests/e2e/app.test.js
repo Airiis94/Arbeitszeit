@@ -216,6 +216,59 @@ test('Tätigkeiten erfassen, Summe und Hinweis auf Abweichung', async () => {
   await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('0:15 länger'));
 });
 
+test('Zwischenspeicher: frühere Tätigkeiten an anderen Tagen auswählen statt neu eingeben', async () => {
+  await workday(); // gebucht 8:15 netto
+  await page.goto(`${base}#/taetigkeiten/${DAY}`);
+  await click('add-activity');
+  await page.fill('dialog input[name=title]', 'Schaltschrank verdrahten');
+  await page.fill('dialog input[name=duration]', '5:15');
+  await page.fill('dialog input[name=category]', 'Werkstatt');
+  await page.selectOption('dialog select[name=intensity]', 'hoch');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await click('add-activity');
+  // Zwischenspeicher zeigt die eben erfasste Tätigkeit
+  await page.waitForSelector('dialog [data-testid=activity-memory] button[data-title="Schaltschrank verdrahten"]');
+  await page.fill('dialog input[name=title]', 'Unterweisung');
+  await page.fill('dialog input[name=duration]', '3:00');
+  await page.click('dialog button[type=submit]');
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('entsprechen genau'));
+
+  // Folgetag: auswählen statt neu eingeben
+  const NEXT = '2026-03-03';
+  await page.goto(`${base}#/taetigkeiten/${NEXT}`);
+  await click('add-activity');
+  const titles = await page.$$eval('dialog [data-testid=activity-memory] .memory-pick', (bs) => bs.map((b) => b.dataset.title));
+  assert.deepEqual(titles.sort(), ['Schaltschrank verdrahten', 'Unterweisung']);
+  // Tippen filtert die Liste
+  await page.fill('dialog input[name=title]', 'schalt');
+  await page.waitForFunction(() => document.querySelectorAll('dialog .memory-pick').length === 1);
+  await page.click('dialog .memory-pick[data-title="Schaltschrank verdrahten"]');
+  assert.equal(await page.inputValue('dialog input[name=title]'), 'Schaltschrank verdrahten');
+  assert.equal(await page.inputValue('dialog input[name=duration]'), '5:15');
+  assert.equal(await page.inputValue('dialog input[name=category]'), 'Werkstatt');
+  assert.equal(await page.inputValue('dialog select[name=intensity]'), 'hoch');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('[data-testid=activity-sum]');
+  assert.equal(await text('activity-sum'), '5:15');
+  const saved = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.filter((a) => a.day === '2026-03-03'));
+  assert.deepEqual(saved.map((a) => [a.title, a.minutes, a.category, a.intensity]), [['Schaltschrank verdrahten', 315, 'Werkstatt', 'hoch']]);
+
+  // Eintrag aus dem Zwischenspeicher entfernen – die gespeicherten Tätigkeiten bleiben
+  await click('add-activity');
+  await page.click('dialog .memory-item:has([data-title="Unterweisung"]) .memory-remove');
+  await page.waitForFunction(() => !document.querySelector('dialog .memory-pick[data-title="Unterweisung"]'));
+  await page.click('dialog button.btn:not([type=submit])');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  const all = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.filter((a) => !a.deleted).length);
+  assert.equal(all, 3);
+  await page.reload();
+  await page.waitForSelector('[data-testid=add-activity]');
+  await click('add-activity');
+  await page.waitForSelector('dialog .memory-pick');
+  assert.equal(await page.$('dialog .memory-pick[data-title="Unterweisung"]'), null);
+});
+
 test('Korrektur mit Begründung verändert den Saldo', async () => {
   await workday();
   await page.goto(`${base}#/konto`);

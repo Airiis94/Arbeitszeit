@@ -66,6 +66,8 @@ export function defaultSettings(today = todayKey()) {
     backupReminderDays: 7,
     // Angaben für den Ausbildungsnachweis (Excel-Export)
     report: { name: '', trainingStart: null },
+    // Aus dem Zwischenspeicher der Tätigkeiten entfernte Einträge: [{ key, at }]
+    activityMemoryHidden: [],
     updatedAt: 0,
   };
 }
@@ -83,5 +85,6 @@ export function normalizeSettings(s, today = todayKey()) {
   delete out.rounding.mode;
   delete out.rounding.carryRule;
   if (out.trackingMode !== 'exact') out.trackingMode = 'quarter';
+  if (!Array.isArray(out.activityMemoryHidden)) out.activityMemoryHidden = [];
   return out;
 }

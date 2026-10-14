@@ -13,6 +13,10 @@ JSON-Datei, die du selbst verwahrst.
 - **Tätigkeiten**: einfaches Protokoll je Tag mit Dauer, Intensität, Kategorie und Summe. Die
   Tätigkeiten eines Tages sollen genau der festgelegten (gebuchten) Netto-Arbeitszeit entsprechen –
   die App zeigt, was noch fehlt oder zu viel ist, und schlägt den offenen Rest als Dauer vor.
+- **Zwischenspeicher der Tätigkeiten**: Einmal erfasste Tätigkeiten lassen sich an jedem Tag (auch
+  beim Nachtragen früherer Tage) per Tipp übernehmen – Bezeichnung, Dauer, Intensität, Kategorie und
+  Beschreibung werden ausgefüllt. Tippen in „Bezeichnung“ durchsucht die Liste; ✕ entfernt einen
+  Eintrag aus der Liste (die gespeicherten Tätigkeiten bleiben unverändert).
 - **Viertelstunden-Buchung**: Gestempelt wird minutengenau, gebucht (Zeiterfassung, Kalender,
   Ausbildungsnachweis) auf die nächstgelegene Viertelstunde – Kommen, Gehen und Pausen. Pro Stempel
   per Tipp frei wählbar: ab- oder aufrunden oder eine Viertelstunde bis zu 2 Stunden davor/danach

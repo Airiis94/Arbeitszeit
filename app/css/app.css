@@ -498,6 +498,20 @@ tr.clickable:active { background: var(--surface-2); }
 .choice-tag { font-size: 0.65rem; color: var(--primary); font-weight: 700; }
 .choice-current { border: 2px solid var(--primary); background: var(--info-bg); }
 
+/* Zwischenspeicher der Tätigkeiten */
+.memory { margin-bottom: 10px; }
+.memory-head { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+.memory-list { display: flex; flex-direction: column; gap: 4px; max-height: 32vh; overflow-y: auto; }
+.memory-item { display: flex; align-items: stretch; gap: 4px; }
+.memory-pick {
+  flex: 1; min-width: 0; text-align: left; padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
+  display: flex; flex-direction: column;
+}
+.memory-pick b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memory-meta { font-size: 0.75rem; color: var(--muted); }
+.memory-remove { flex: none; }
+
 /* ---------- Formulare ---------- */
 
 .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; min-width: 0; }

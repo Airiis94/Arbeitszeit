@@ -58,7 +58,9 @@ Arbeitsphase geben; das wird innerhalb der Schreibtransaktion geprüft.
 ### `kv` – Einstellungen und Metadaten
 
 - `settings`: `accountStart`, `startBalanceMin`, `trackingMode` (`quarter` = Viertelstunden/Raster,
-  `exact` = minutengenau; fehlt in älteren Daten → `quarter`), `rounding.interval` (Buchungsraster in Minuten),
+  `exact` = minutengenau; fehlt in älteren Daten → `quarter`), `activityMemoryHidden` (aus dem
+  Zwischenspeicher entfernte Tätigkeiten `[{ key, at }]`; der Zwischenspeicher selbst wird nicht
+  gespeichert, sondern aus `activities` gebildet – `core/memory.js`), `rounding.interval` (Buchungsraster in Minuten),
   `autoBreak`, `theme`, `backupReminderDays`, `report` (`name`, `trainingStart` für den
   Ausbildungsnachweis). Felder früherer Versionen (`targetRules`, `countEmptyDays`,
   `rounding.mode`, `rounding.carryRule`) werden beim Laden entfernt.

@@ -6,6 +6,7 @@ import {
 } from '../core/time.js';
 import { newInterval, touch, DAY_TYPES, INTENSITIES } from '../core/model.js';
 import { stampChoices } from '../core/booking.js';
+import { activityTemplates, filterTemplates, templateMinutes, hideTemplate } from '../core/memory.js';
 import { ValidationError } from '../db/repo.js';
 
 const err = (msg) => new ValidationError([msg]);
@@ -253,12 +254,61 @@ export function chooseBookingDialog(app, intervals, st, day, interval, balance) 
 
 // ---------- Tätigkeiten ----------
 
-export function editActivityDialog(app, day, rec = null, categories = [], suggestMin = null) {
+/**
+ * Zwischenspeicher im Tätigkeitsdialog: zuvor erfasste Tätigkeiten zum Übernehmen.
+ * Die Liste filtert sich beim Tippen der Bezeichnung; ein Tipp füllt alle Felder aus.
+ */
+function memoryPicker(app, form, memory, suggestMin) {
+  let hidden = memory.settings?.activityMemoryHidden || [];
+  let templates = activityTemplates(memory.activities, hidden);
+  const list = h('div', { class: 'memory-list', 'data-testid': 'activity-memory' });
+  const box = h('div', { class: 'memory' },
+    h('div', { class: 'memory-head' }, 'Aus dem Zwischenspeicher übernehmen'), list);
+  const apply = (t) => {
+    const el = form.elements;
+    el.title.value = t.title;
+    el.duration.value = fmtDuration(templateMinutes(t, suggestMin));
+    el.intensity.value = t.intensity || '';
+    el.category.value = t.category || '';
+    el.description.value = t.description || '';
+    render();
+    el.duration.focus();
+    el.duration.select();
+  };
+  const remove = async (t) => {
+    hidden = hideTemplate(hidden, t.key);
+    try {
+      const settings = (await app.repo.loadAll()).settings;
+      await app.repo.saveSettings({ ...settings, activityMemoryHidden: hidden });
+      templates = templates.filter((x) => x.key !== t.key);
+      render();
+      toast(`„${t.title}“ aus dem Zwischenspeicher entfernt.`);
+    } catch (e) { app.error(e); }
+  };
+  function render() {
+    const shown = filterTemplates(templates, form.elements.title?.value || '');
+    box.hidden = !templates.length;
+    list.replaceChildren(...(shown.length ? shown.map((t) => h('div', { class: 'memory-item' },
+      h('button', { type: 'button', class: 'memory-pick', 'data-title': t.title, onclick: () => apply(t) },
+        h('b', null, t.title),
+        h('span', { class: 'memory-meta' }, [fmtDuration(t.minutes), t.category, t.count > 1 ? `${t.count}×` : null].filter(Boolean).join(' · '))),
+      h('button', { type: 'button', class: 'icon-btn memory-remove', 'aria-label': `„${t.title}“ aus dem Zwischenspeicher entfernen`, onclick: () => remove(t) }, '✕')))
+      : [h('p', { class: 'muted small' }, 'Kein passender Eintrag – wird nach dem Speichern aufgenommen.')]));
+  }
+  render();
+  // Das Bezeichnungsfeld entsteht erst nach dem Zwischenspeicher im Dialog.
+  window.requestAnimationFrame(() => form.elements.title?.addEventListener('input', render));
+  return box;
+}
+
+/** @param memory { activities, settings } für den Zwischenspeicher (nur beim Erfassen) */
+export function editActivityDialog(app, day, rec = null, categories = [], suggestMin = null, memory = null) {
   const listId = 'cat-list';
   return formDialog({
     title: rec ? 'Tätigkeit bearbeiten' : `Tätigkeit erfassen – ${fmtDate(day)}`,
-    build: () => [
-      field('Bezeichnung', h('input', { name: 'title', type: 'text', class: 'input', required: true, maxlength: 120, value: rec?.title || '' })),
+    build: (form) => [
+      !rec && memory ? memoryPicker(app, form, memory, suggestMin) : null,
+      field('Bezeichnung', h('input', { name: 'title', type: 'text', class: 'input', required: true, maxlength: 120, value: rec?.title || '', placeholder: !rec && memory ? 'Tippen zum Suchen' : '' })),
       field('Dauer', h('input', { name: 'duration', type: 'text', class: 'input', inputmode: 'decimal', value: rec ? fmtDuration(rec.minutes) : suggestMin ? fmtDuration(suggestMin) : '', placeholder: 'z. B. 90, 1:30 oder 1,5h' }), suggestMin && !rec ? `Vorschlag: der noch nicht zugeordnete Rest (${fmtDuration(suggestMin)})` : null),
       h('div', { class: 'row-2' },
         field('Intensität', h('select', { name: 'intensity', class: 'input' },

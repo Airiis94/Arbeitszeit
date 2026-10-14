@@ -43,7 +43,7 @@ export async function renderActivities(app, params) {
       h('h1', { class: 'nav-title' }, fmtDate(day)),
       h('a', { class: 'btn btn-small', href: `#/taetigkeiten/${addDays(day, 1)}`, 'aria-label': 'Folgetag' }, '›')),
     status,
-    h('button', { type: 'button', class: 'btn btn-primary btn-block', 'data-testid': 'add-activity', onclick: () => editActivityDialog(app, day, null, categories, suggest) }, '+ Tätigkeit erfassen'),
+    h('button', { type: 'button', class: 'btn btn-primary btn-block', 'data-testid': 'add-activity', onclick: () => editActivityDialog(app, day, null, categories, suggest, { activities: data.activities, settings: data.settings }) }, '+ Tätigkeit erfassen'),
     acts.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'act-table' },
       h('thead', null, h('tr', null, ['Bezeichnung', 'Dauer', 'Intensität', 'Kategorie', ''].map((t) => h('th', null, t)))),
       h('tbody', null, acts.map((a) => h('tr', null,
