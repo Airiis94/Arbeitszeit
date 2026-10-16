@@ -301,6 +301,53 @@ function memoryPicker(app, form, memory, suggestMin) {
   return box;
 }
 
+/**
+ * Schnellerfassung (Startseite): Tätigkeit und Dauer in einem kleinen Dialog.
+ * Ist die Bezeichnung aus dem Zwischenspeicher bekannt, werden Kategorie, Intensität und
+ * Beschreibung übernommen und die zuletzt verwendete Dauer vorgeschlagen.
+ * @param openMin noch zu vergebende Minuten des Tages (negativ = zu viel vergeben)
+ */
+export function quickActivityDialog(app, day, title = '', { openMin = 0, templates = [], onSaved } = {}) {
+  const findTemplate = (t) => templates.find((x) => x.title.toLowerCase() === String(t || '').trim().toLowerCase()) || null;
+  const tpl = findTemplate(title);
+  const initial = tpl ? templateMinutes(tpl, openMin) : openMin > 0 ? openMin : null;
+  const hint = openMin > 0 ? `Noch zu vergeben: ${fmtDuration(openMin)}`
+    : openMin < 0 ? `Bereits ${fmtDuration(-openMin)} mehr vergeben als die Netto-Arbeitszeit.` : 'Die Netto-Arbeitszeit ist bereits vollständig vergeben.';
+  return formDialog({
+    title: `Tätigkeit hinzufügen – ${fmtDate(day, { year: false })}`,
+    submitText: 'Hinzufügen',
+    build: () => {
+      const dur = h('input', { name: 'duration', type: 'text', class: 'input', inputmode: 'decimal', value: initial ? fmtDuration(initial) : '', placeholder: 'z. B. 90, 1:30 oder 1,5h', 'data-testid': 'quick-duration' });
+      const set = (m) => () => { dur.value = fmtDuration(m); };
+      return [
+        field('Tätigkeit', h('input', { name: 'title', type: 'text', class: 'input', required: true, maxlength: 120, value: title, 'data-nofocus': title ? true : null })),
+        field('Dauer', dur, hint),
+        h('div', { class: 'chips dur-chips', 'data-testid': 'duration-chips' },
+          openMin > 0 ? h('button', { type: 'button', class: 'chip chip-rest', onclick: set(openMin) }, `Rest ${fmtDuration(openMin)}`) : null,
+          [15, 30, 45, 60, 90, 120, 180, 240, 300, 360].map((m) => h('button', { type: 'button', class: 'chip', onclick: set(m) }, fmtDuration(m)))),
+      ];
+    },
+    onSubmit: async (form) => {
+      const f = new FormData(form);
+      const name = String(f.get('title') || '').trim();
+      if (!name) throw err('Bitte eine Tätigkeit eingeben.');
+      const minutes = parseDuration(f.get('duration'));
+      if (!minutes || minutes <= 0) throw err('Bitte eine Dauer wählen oder eingeben (z. B. 90, 1:30 oder 1,5h).');
+      const known = findTemplate(name);
+      const res = await app.repo.saveActivity({
+        day,
+        title: known ? known.title : name, // Schreibweise aus dem Zwischenspeicher
+        description: known?.description || '',
+        minutes,
+        intensity: known?.intensity || null,
+        category: known?.category || null,
+      });
+      onSaved?.();
+      undoToast(app, `„${known ? known.title : name}“ (${fmtDuration(minutes)}) gespeichert.`, res.changes);
+    },
+  });
+}
+
 /** @param memory { activities, settings } für den Zwischenspeicher (nur beim Erfassen) */
 export function editActivityDialog(app, day, rec = null, categories = [], suggestMin = null, memory = null) {
   const listId = 'cat-list';

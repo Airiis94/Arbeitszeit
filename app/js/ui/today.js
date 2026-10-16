@@ -1,12 +1,13 @@
 // Ansicht „Heute“: Stempeluhr, gebuchte Viertelstunden und Zeitkonto der Differenzminuten.
 
 import { h } from './dom.js';
-import { computeDay, computeAccount, dayRow } from '../core/calc.js';
+import { computeDay, computeAccount, dayRow, activityCheck } from '../core/calc.js';
+import { activityTemplates } from '../core/memory.js';
 import { deriveState } from '../core/state.js';
 import { bookDay, suggestLeave, bookingInterval } from '../core/booking.js';
 import { fmtDuration, fmtDate, timeOfDay, todayKey, fmtDateTime, HOUR_MS } from '../core/time.js';
 import { signed, entryList, statusBadge, backupState, issueList } from './common.js';
-import { quickBreak, editBreakDialog, undoToast, chooseBookingDialog } from './editors.js';
+import { quickBreak, editBreakDialog, undoToast, chooseBookingDialog, quickActivityDialog } from './editors.js';
 import { icon } from './icons.js';
 
 const MODE_LABEL = { idle: 'Nicht eingestempelt', working: 'Arbeit läuft', break: 'Pause läuft' };
@@ -112,6 +113,37 @@ export async function renderToday(app) {
     }
   }
 
+  // Tätigkeiten schnell erfassen: Eingabe · Uhr (Dauer) · noch zu vergebende Zeit
+  const chk = activityCheck(row, data.activities);
+  const dayActs = data.activities.filter((a) => !a.deleted && a.day === workDay);
+  const templates = activityTemplates(data.activities, settings.activityMemoryHidden);
+  const actInput = h('input', {
+    type: 'text', class: 'input quick-act-input', placeholder: 'Tätigkeit …', maxlength: 120, list: 'quick-act-list',
+    'aria-label': 'Tätigkeit', enterkeyhint: 'next', autocomplete: 'off', 'data-testid': 'quick-activity', value: app.quickActivityDraft || '',
+  });
+  const openQuick = () => quickActivityDialog(app, workDay, actInput.value, {
+    openMin: chk.gap, templates, onSaved: () => { app.quickActivityDraft = ''; },
+  });
+  actInput.addEventListener('input', () => { app.quickActivityDraft = actInput.value; });
+  actInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); openQuick(); } });
+  let restState = 'open';
+  let restLabel = chk.running ? 'offen bisher' : 'offen';
+  let restValue = fmtDuration(Math.max(0, chk.gap));
+  if (chk.target > 0 && chk.gap === 0) { restState = 'done'; restLabel = 'vergeben'; restValue = '✓'; }
+  if (chk.gap < 0) { restState = 'over'; restLabel = 'zu viel'; restValue = fmtDuration(-chk.gap); }
+  const quickAct = h('div', { class: 'card quick-act' },
+    h('div', { class: 'quick-act-head' },
+      h('span', { class: 'metric-label' }, 'Tätigkeit erfassen'),
+      h('a', { href: `#/taetigkeiten/${workDay}`, class: 'small' }, dayActs.length ? `${dayActs.length} erfasst · ${fmtDuration(chk.sum)} – alle →` : 'Liste öffnen →')),
+    h('div', { class: 'quick-act-row' },
+      actInput,
+      h('button', { type: 'button', class: 'quick-act-time', 'aria-label': 'Dauer wählen und hinzufügen', title: 'Dauer wählen und hinzufügen', 'data-testid': 'quick-activity-time', onclick: openQuick }, icon('clock', { stroke: '2.2' })),
+      h('a', {
+        class: `quick-act-rest rest-${restState}`, href: `#/taetigkeiten/${workDay}`, 'data-testid': 'activity-rest',
+        title: `Netto-Arbeitszeit ${fmtDuration(chk.target)}, Tätigkeiten ${fmtDuration(chk.sum)}`,
+      }, h('span', { class: 'rest-label' }, restLabel), h('b', null, restValue))),
+    h('datalist', { id: 'quick-act-list' }, templates.slice(0, 50).map((t) => h('option', { value: t.title }))));
+
   const todayCard = h('div', { class: 'card' },
     h('div', { class: 'card-head' }, h('h2', null, `Heute · ${fmtDate(workDay, { year: false })}`),
       quarter ? h('span', { class: 'muted small' }, closed ? 'gebucht' : 'bisher') : null),
@@ -135,6 +167,7 @@ export async function renderToday(app) {
         h('div', { class: 'status-date' }, h('span', { class: 'nowrap' }, fmtDate(workDay, { year: false })), d.status !== 'running' && d.status !== 'empty' ? statusBadge(d.status, info?.dayType) : null)),
       h('div', { class: 'actions' }, actions),
       quick),
+    quickAct,
     warnings,
     issueList(d.issues.filter((i) => i.code !== 'stale-open')),
     todayCard,

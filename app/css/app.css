@@ -383,6 +383,33 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .account-row .metric:only-child { grid-column: 1 / -1; }
 .card-link { display: inline-block; margin-top: 10px; font-weight: 700; text-decoration: none; }
 
+/* Schnellerfassung von Tätigkeiten auf der Startseite */
+.quick-act { padding: 10px 12px; }
+.quick-act-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.quick-act-head a { text-decoration: none; font-weight: 700; white-space: nowrap; }
+.quick-act-row { display: flex; gap: 6px; align-items: stretch; }
+.quick-act-input { flex: 1; min-width: 0; }
+.quick-act-time {
+  flex: none; width: 50px; min-height: 48px; padding: 0; border: none; border-radius: 10px;
+  background: var(--primary); color: var(--primary-text); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.quick-act-time svg { width: 26px; height: 26px; }
+.quick-act-time:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.quick-act-rest {
+  flex: none; min-width: 66px; padding: 2px 8px; border: 1px solid; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  line-height: 1.15; text-decoration: none; color: var(--text);
+}
+.quick-act-rest b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.rest-label { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+.rest-open { background: var(--warn-bg); border-color: var(--warn-border); }
+.rest-done { background: var(--ok-bg); border-color: var(--st-complete); color: var(--pos); }
+.rest-over { background: var(--error-bg); border-color: var(--neg); color: var(--neg); }
+.dur-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; }
+.dur-chips .chip { min-width: 0; padding: 6px 4px; font-variant-numeric: tabular-nums; }
+.chip-rest { grid-column: span 2; white-space: nowrap; background: var(--warn-bg); border-color: var(--warn-border); }
+
 .entries { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .entry {
   padding: 8px 8px 8px 12px;

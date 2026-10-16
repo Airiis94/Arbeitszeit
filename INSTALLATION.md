@@ -51,6 +51,8 @@ gestempelten Zeiten bleiben dabei erhalten; zurückschalten ist jederzeit mögli
 
 **Tätigkeiten:** Die Tätigkeiten eines Tages sollen zusammen genau die gebuchte Netto-Arbeitszeit
 ergeben. Die App zeigt, wie viel noch zuzuordnen ist, und schlägt den Rest als Dauer vor.
+Am schnellsten geht es direkt unter **Heute**: Tätigkeit eintippen, auf die **Uhr** tippen, Dauer wählen
+(oder „Rest“) und „Hinzufügen“. Rechts daneben steht, wie viel Zeit des Tages noch zu vergeben ist.
 Wiederkehrende Tätigkeiten müssen nicht neu eingegeben werden: Beim Erfassen stehen oben alle bisher
 erfassten Tätigkeiten im **Zwischenspeicher** – antippen übernimmt Bezeichnung, Dauer, Kategorie und
 Beschreibung. Tippen in „Bezeichnung“ sucht in der Liste, ✕ entfernt einen Eintrag aus der Liste.

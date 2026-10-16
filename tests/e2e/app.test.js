@@ -269,6 +269,39 @@ test('Zwischenspeicher: frühere Tätigkeiten an anderen Tagen auswählen statt 
   assert.equal(await page.$('dialog .memory-pick[data-title="Unterweisung"]'), null);
 });
 
+test('Startseite: Tätigkeit mit Dauer per Uhr-Knopf erfassen, offene Zeit wird angezeigt', async () => {
+  await workday(); // gebucht 8:15 netto
+  await page.goto(`${base}#/heute`);
+  await page.waitForSelector('[data-testid=activity-rest]');
+  assert.match(await text('activity-rest'), /offen\s*8:15/);
+  // Eintippen, Uhr antippen, Dauer per Schnellwahl
+  await page.fill('[data-testid=quick-activity]', 'Löten');
+  await click('quick-activity-time');
+  assert.equal(await page.inputValue('dialog [data-testid=quick-duration]'), '8:15'); // Vorschlag: offener Rest
+  await page.click('dialog [data-testid=duration-chips] button:has-text("2:00")');
+  await page.click('dialog button[type=submit]');
+  await page.waitForFunction(() => /offen\s*6:15/.test(document.querySelector('[data-testid=activity-rest]')?.textContent || ''));
+  assert.equal(await page.inputValue('[data-testid=quick-activity]'), ''); // Eingabe geleert
+  // Bekannte Tätigkeit (Zwischenspeicher): Kategorie wird übernommen, Enter öffnet den Dialog
+  await page.evaluate(async () => {
+    await window.__app.repo.saveActivity({ day: '2026-02-27', title: 'Messen', minutes: 90, intensity: 'hoch', category: 'Werkstatt', description: '' });
+  });
+  await page.fill('[data-testid=quick-activity]', 'messen');
+  await page.press('[data-testid=quick-activity]', 'Enter');
+  assert.equal(await page.inputValue('dialog [data-testid=quick-duration]'), '1:30');
+  await page.click('dialog [data-testid=duration-chips] .chip-rest'); // Rest 6:15
+  await page.click('dialog button[type=submit]');
+  await page.waitForFunction(() => /vergeben/.test(document.querySelector('[data-testid=activity-rest]')?.textContent || ''));
+  const acts = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.filter((a) => a.day === '2026-03-02'));
+  assert.deepEqual(acts.map((a) => [a.title, a.minutes, a.category, a.intensity]).sort(), [['Löten', 120, null, null], ['Messen', 375, 'Werkstatt', 'hoch']]);
+  // Ohne Dauer wird nicht gespeichert
+  await page.fill('[data-testid=quick-activity]', 'Test');
+  await click('quick-activity-time');
+  await page.fill('dialog [data-testid=quick-duration]', '');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog .dialog-error:not([hidden])');
+});
+
 test('Korrektur mit Begründung verändert den Saldo', async () => {
   await workday();
   await page.goto(`${base}#/konto`);

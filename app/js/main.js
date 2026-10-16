@@ -94,9 +94,15 @@ async function render({ keepScroll = false } = {}) {
   if (route.live) {
     // Nur die Anzeige wird periodisch neu berechnet – alle Werte stammen aus gespeicherten Zeitstempeln.
     liveTimer = setInterval(() => {
-      if (document.visibilityState === 'visible' && !document.querySelector('dialog[open]')) app.rerender();
+      if (document.visibilityState === 'visible' && !document.querySelector('dialog[open]') && !isTyping()) app.rerender();
     }, 20000);
   }
+}
+
+/** Wird gerade in ein Feld der Ansicht getippt? Dann nicht neu zeichnen (Eingabe und Fokus bleiben). */
+function isTyping() {
+  const el = document.activeElement;
+  return !!el && view.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
 }
 
 /** Neu zeichnen – bei offenem Dialog erst nach dessen Schließen (Eingaben gehen nicht verloren). */

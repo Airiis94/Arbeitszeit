@@ -13,6 +13,8 @@ JSON-Datei, die du selbst verwahrst.
 - **Tätigkeiten**: einfaches Protokoll je Tag mit Dauer, Intensität, Kategorie und Summe. Die
   Tätigkeiten eines Tages sollen genau der festgelegten (gebuchten) Netto-Arbeitszeit entsprechen –
   die App zeigt, was noch fehlt oder zu viel ist, und schlägt den offenen Rest als Dauer vor.
+- **Schnellerfassung auf „Heute“**: Tätigkeit eintippen, Uhr-Knopf → Dauer wählen (Schnellwahl oder
+  „Rest“), daneben die noch zu vergebende Zeit des Tages. Bekannte Tätigkeiten werden vorgeschlagen.
 - **Zwischenspeicher der Tätigkeiten**: Einmal erfasste Tätigkeiten lassen sich an jedem Tag (auch
   beim Nachtragen früherer Tage) per Tipp übernehmen – Bezeichnung, Dauer, Intensität, Kategorie und
   Beschreibung werden ausgefüllt. Tippen in „Bezeichnung“ durchsucht die Liste; ✕ entfernt einen
