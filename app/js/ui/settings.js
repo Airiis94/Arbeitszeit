@@ -31,7 +31,15 @@ async function storageInfo() {
 const mb = (b) => (b == null ? '?' : `${(b / 1024 / 1024).toFixed(1)} MB`);
 
 function section(title, ...children) {
-  return h('div', { class: 'card' }, h('h2', null, title), ...children);
+  const id = `sec-${title.toLowerCase().replace(/[^a-zäöü]+/g, '-').replace(/-+$/, '')}`;
+  return h('div', { class: 'card', id }, h('h2', null, title), ...children);
+}
+
+/** Sprungmarken zu den Abschnitten der (langen) Einstellungsseite. */
+function jumpNav(sections) {
+  return h('nav', { class: 'jump', 'aria-label': 'Abschnitte' }, sections.map(([label, el]) => h('button', {
+    type: 'button', class: 'chip', onclick: () => el.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+  }, label)));
 }
 
 export async function renderSettings(app) {
@@ -215,8 +223,9 @@ export async function renderSettings(app) {
     }, 'Alle Daten löschen …'));
 
   return h('section', { class: 'view view-settings' },
+    jumpNav([['Sicherung', backupSection], ['Zeitkonto', accountSection], ['Nachweis', reportSection], ['Speicher', storageSection], ['Darstellung', themeSection], ['Löschen', dangerSection]]),
     h('a', { class: 'btn btn-block', href: '#/hilfe' }, '❓ Hilfe & Installationsanleitung'),
-    backupSection, reportSection, storageSection, accountSection, themeSection, dangerSection,
+    backupSection, accountSection, reportSection, storageSection, themeSection, dangerSection,
     h('p', { class: 'muted small center' }, `Arbeitszeit v${APP_VERSION} · Datenformat ${SCHEMA_VERSION} · Gerät ${String(meta.deviceId || '').slice(0, 8)}`,
       h('br'), 'Keine Werbung, kein Tracking, keine Server – alle Daten bleiben auf diesem Gerät.'));
 }

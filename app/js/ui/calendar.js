@@ -1,7 +1,7 @@
 // Kalender: Monats- und Wochenansicht mit Zusammenfassung. Antippen eines Tages öffnet die Tagesansicht.
 
 import { h } from './dom.js';
-import { computeAccount, dayRow, summarize } from '../core/calc.js';
+import { computeAccount, dayRow, summarize, STATUS_LABELS } from '../core/calc.js';
 import {
   fmtDuration, fmtDate, fmtMonth, addDays, addMonths, todayKey, monthKey, firstOfMonth, lastOfMonth,
   startOfWeek, weekdayIndex, isoWeek, WEEKDAYS_SHORT, isValidDayKey,
@@ -28,12 +28,12 @@ function summaryCard(title, rows, endBalance) {
   return h('div', { class: 'card summary' },
     h('h2', null, title),
     h('div', { class: 'summary-grid' },
-      h('div', null, h('span', null, 'Arbeitszeit (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedNetMin))),
-      h('div', null, h('span', null, 'gestempelt'), h('b', { class: 'num' }, fmtDuration(s.netMin))),
+      h('div', { class: 'sum-main' }, h('span', null, 'Arbeitszeit (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedNetMin))),
+      h('div', null, h('span', null, 'davon gestempelt'), h('b', { class: 'num' }, fmtDuration(s.netMin))),
       h('div', null, h('span', null, 'Pausen (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedBreakMin))),
-      h('div', null, h('span', null, 'Differenzminuten'), h('b', null, signed(s.effect))),
-      h('div', null, h('span', null, 'Zeitkonto am Ende'), h('b', null, endBalance == null ? '–' : signed(endBalance))),
       h('div', null, h('span', null, 'Arbeitstage'), h('b', { class: 'num' }, String(s.workedDays))),
+      h('div', null, h('span', null, 'Differenzminuten'), h('b', null, signed(s.effect))),
+      h('div', { class: 'sum-main' }, h('span', null, 'Zeitkonto am Ende'), h('b', null, endBalance == null ? '–' : signed(endBalance))),
       s.open ? h('div', { class: 'neg' }, h('span', null, 'Offen/fehlerhaft'), h('b', { class: 'num' }, String(s.open))) : null));
 }
 
@@ -43,9 +43,10 @@ function lastBalance(rows) {
 }
 
 function legend() {
-  return h('div', { class: 'legend' },
-    ['complete', 'running', 'incomplete', 'conflict'].map((s) => statusBadge(s)),
-    h('span', { class: 'badge badge-absence' }, 'Abwesenheit'));
+  const item = (key, label) => h('span', { class: 'legend-item' }, h('span', { class: `dot dot-${key}` }), label);
+  return h('div', { class: 'legend', 'aria-label': 'Legende' },
+    ['complete', 'running', 'incomplete', 'conflict'].map((s) => item(s, STATUS_LABELS[s])),
+    item('absence', 'Abwesenheit'));
 }
 
 function cellClass(r, today) {

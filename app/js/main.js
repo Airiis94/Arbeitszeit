@@ -13,7 +13,7 @@ import { renderHelp } from './ui/help.js';
 const ROUTES = {
   heute: { render: renderToday, nav: 'heute', title: 'Heute', live: true },
   kalender: { render: renderCalendar, nav: 'kalender', title: 'Kalender' },
-  tag: { render: renderDay, nav: 'kalender', title: 'Tag', live: true },
+  tag: { render: renderDay, nav: 'kalender', title: 'Tagesansicht', live: true },
   taetigkeiten: { render: renderActivities, nav: 'taetigkeiten', title: 'Tätigkeiten' },
   konto: { render: renderAccount, nav: 'konto', title: 'Zeitkonto' },
   einstellungen: { render: renderSettings, nav: 'einstellungen', title: 'Einstellungen' },
@@ -76,6 +76,8 @@ async function render({ keepScroll = false } = {}) {
     if (a.dataset.nav === route.nav) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   document.title = `${route.title} · Arbeitszeit`;
+  const titleEl = document.getElementById('topbar-title');
+  if (titleEl) titleEl.textContent = route.title;
   const scroll = window.scrollY;
   try {
     const el = await route.render(app, params);
@@ -190,7 +192,12 @@ async function start() {
       app.rerender();
     }
   });
-  window.addEventListener('hashchange', () => render());
+  window.addEventListener('hashchange', () => {
+    // Beim Wechsel der Ansicht (z. B. Zurück-Taste) offene Dialoge ohne Speichern schließen
+    document.querySelectorAll('dialog[open]').forEach((d) => d.dispatchEvent(new Event('cancel')));
+    pendingRender = false;
+    render();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && !document.querySelector('dialog[open]')) app.rerender();
   });

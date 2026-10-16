@@ -17,10 +17,13 @@
 </head>
 <body>
   <header class="topbar">
-    <span class="brand">⏱ Arbeitszeit</span>
+    <span class="brand">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9 2h6"/></svg></span>
+      <span class="brand-text"><span class="brand-app">Arbeitszeit</span><span class="topbar-title" id="topbar-title">Heute</span></span>
+    </span>
     <span class="topbar-right">
       <span class="offline-flag" title="Keine Internetverbindung – die App funktioniert trotzdem.">offline</span>
-      <a class="help-link" href="#/hilfe" data-nav="hilfe" data-testid="help-link">Hilfe</a>
+      <a class="help-link" href="#/hilfe" data-nav="hilfe" data-testid="help-link"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17.5v.01"/></svg><span>Hilfe</span></a>
     </span>
   </header>
   <main id="view" class="main" aria-live="polite">
@@ -28,11 +31,11 @@
     <p class="muted center">Lade …</p>
   </main>
   <nav class="bottom-nav" aria-label="Hauptnavigation">
-    <a href="#/heute" data-nav="heute"><span class="nav-ico" aria-hidden="true">⏱</span><span>Heute</span></a>
-    <a href="#/kalender" data-nav="kalender"><span class="nav-ico" aria-hidden="true">📅</span><span>Kalender</span></a>
-    <a href="#/taetigkeiten" data-nav="taetigkeiten"><span class="nav-ico" aria-hidden="true">📝</span><span>Tätigkeiten</span></a>
-    <a href="#/konto" data-nav="konto"><span class="nav-ico" aria-hidden="true">⚖</span><span>Zeitkonto</span></a>
-    <a href="#/einstellungen" data-nav="einstellungen"><span class="nav-ico" aria-hidden="true">⚙</span><span>Einstellungen</span></a>
+    <a href="#/heute" data-nav="heute"><span class="nav-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9 2h6"/></svg></span><span>Heute</span></a>
+    <a href="#/kalender" data-nav="kalender"><span class="nav-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><span>Kalender</span></a>
+    <a href="#/taetigkeiten" data-nav="taetigkeiten"><span class="nav-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM9 11h6M9 15h6M9 19h3"/></svg></span><span>Tätigkeiten</span></a>
+    <a href="#/konto" data-nav="konto"><span class="nav-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16M7 20h10M5 8h14"/><path d="M5 8l-2.5 6a2.5 2.5 0 0 0 5 0zM19 8l-2.5 6a2.5 2.5 0 0 0 5 0z"/></svg></span><span>Zeitkonto</span></a>
+    <a href="#/einstellungen" data-nav="einstellungen"><span class="nav-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></span><span>Einstellungen</span></a>
   </nav>
   <div id="toasts" class="toasts" aria-live="assertive"></div>
 </body>

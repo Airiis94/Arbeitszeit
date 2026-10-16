@@ -5,8 +5,9 @@ import { computeDay, computeAccount, dayRow } from '../core/calc.js';
 import { deriveState } from '../core/state.js';
 import { bookDay, suggestLeave, bookingInterval } from '../core/booking.js';
 import { fmtDuration, fmtDate, timeOfDay, todayKey, fmtDateTime, HOUR_MS } from '../core/time.js';
-import { stat, signed, entryList, statusBadge, backupState, issueList, stampText } from './common.js';
+import { signed, entryList, statusBadge, backupState, issueList } from './common.js';
 import { quickBreak, editBreakDialog, undoToast, chooseBookingDialog } from './editors.js';
+import { icon } from './icons.js';
 
 const MODE_LABEL = { idle: 'Nicht eingestempelt', working: 'Arbeit läuft', break: 'Pause läuft' };
 
@@ -26,9 +27,9 @@ export async function renderToday(app) {
   const acc = computeAccount({ ...data, settings, today, now });
   const row = acc.rowsByDay.get(workDay) || dayRow(workDay, dayIntervals, info, settings, now, interval);
 
-  let phaseInfo = '–';
-  if (st.mode === 'working') phaseInfo = `seit ${st.session.day === today ? timeOfDay(st.session.start) : fmtDateTime(st.session.start)}`;
-  if (st.mode === 'break') phaseInfo = `Pause seit ${timeOfDay(st.brk.start)} (Arbeit seit ${timeOfDay(st.session.start)})`;
+  let phaseInfo = d.sessions.length ? '–' : 'Heute noch nicht eingestempelt';
+  if (st.mode === 'working') phaseInfo = `seit ${st.session.day === today ? timeOfDay(st.session.start) : fmtDateTime(st.session.start)} · ${fmtDuration(d.netMin)} h gearbeitet`;
+  if (st.mode === 'break') phaseInfo = `Pause seit ${timeOfDay(st.brk.start)} · Arbeit seit ${timeOfDay(st.session.start)}`;
   if (st.mode === 'idle' && d.lastEnd) phaseInfo = `Feierabend um ${timeOfDay(d.lastEnd)}`;
 
   const warnings = [];
@@ -67,51 +68,63 @@ export async function renderToday(app) {
       btn.disabled = false;
     }
   };
-  const bigBtn = (label, cls, action, testId) => h('button', { type: 'button', class: `btn btn-big ${cls}`, onclick: act(action), 'data-testid': testId }, label);
+  const bigBtn = (ico, label, cls, action, testId) => h('button', { type: 'button', class: `btn btn-big ${cls}`, onclick: act(action), 'data-testid': testId }, ico, label);
   let actions;
   if (st.mode === 'idle') {
-    actions = [bigBtn(d.sessions.length ? '▶ Weitere Arbeitsphase beginnen' : '▶ Arbeitsbeginn', 'btn-start', 'start', 'btn-start')];
+    actions = [bigBtn(icon('play', { fill: true }), d.sessions.length ? 'Weitere Arbeitsphase beginnen' : 'Arbeitsbeginn', 'btn-start', 'start', 'btn-start')];
   } else if (st.mode === 'working') {
-    actions = [bigBtn('⏸ Pause', 'btn-pause', 'pause', 'btn-pause'), bigBtn('⏹ Feierabend', 'btn-end', 'end', 'btn-end')];
+    actions = [bigBtn(icon('pause'), 'Pause', 'btn-pause', 'pause', 'btn-pause'), bigBtn(icon('stop', { fill: true }), 'Feierabend', 'btn-end', 'end', 'btn-end')];
   } else {
-    actions = [bigBtn('▶ Pause beenden', 'btn-resume', 'resume', 'btn-resume'), bigBtn('⏹ Feierabend', 'btn-end', 'end', 'btn-end')];
+    actions = [bigBtn(icon('play', { fill: true }), 'Pause beenden', 'btn-resume', 'resume', 'btn-resume'), bigBtn(icon('stop', { fill: true }), 'Feierabend', 'btn-end', 'end', 'btn-end')];
   }
 
   const quick = h('div', { class: 'quick' },
-    h('span', { class: 'quick-label' }, 'Pause nachtragen:'),
+    h('span', { class: 'quick-label' }, 'Pause nachtragen (Minuten):'),
     [15, 30, 45, 60].map((m) => h('button', { type: 'button', class: 'chip', onclick: () => quickBreak(app, workDay, m) }, `${m}`)),
     h('button', { type: 'button', class: 'chip', onclick: () => editBreakDialog(app, workDay, null, d.sessions) }, '…'));
 
-  // Arbeitszeit: nach Feierabend die gebuchte (Viertelstunden), während der Arbeit die laufende
-  const workTile = booking.bookedNetMin != null && d.sessions.length
-    ? stat('Arbeitszeit (gebucht)', h('span', { class: 'num', 'data-testid': 'net' }, fmtDuration(row.bookedNetMin)), `gestempelt ${fmtDuration(d.netMin)}`)
-    : stat('Arbeitszeit', h('span', { class: 'num', 'data-testid': 'net' }, fmtDuration(d.netMin)),
-      booking.firstBooked != null ? `gebucht ab ${timeOfDay(booking.firstBooked)}` : 'noch nicht eingestempelt');
-  const breakTile = booking.bookedNetMin != null && d.sessions.length
-    ? stat('Pausen (gebucht)', h('span', { class: 'num', 'data-testid': 'breaks' }, fmtDuration(row.bookedBreakMin)),
-      `gestempelt ${fmtDuration(d.breakMin + d.autoBreakMin)}`)
-    : stat('Pausen', h('span', { class: 'num', 'data-testid': 'breaks' }, fmtDuration(d.breakMin + d.autoBreakMin)),
-      d.openBreak ? `läuft seit ${timeOfDay(d.openBreak.start)}` : `${d.breaks.length} Pause(n)`);
-
-  const stampsInfo = booking.stamps.filter((x) => x.effect !== 0).map((x) => stampText(x, workDay));
-  const diffTile = quarter ? stat('Differenz heute', h('span', { 'data-testid': 'diff' }, signed(booking.effect)),
-    stampsInfo.length ? stampsInfo.join(' · ') : 'keine Differenzminuten', { wide: true }) : null;
+  // Kennzahlen des Tages: nach Feierabend gebucht (Raster), während der Arbeit laufend
+  const metric = (label, value, sub, cls = '') => h('div', { class: `metric ${cls}` },
+    h('div', { class: 'metric-label' }, label), h('div', { class: 'metric-value' }, value), sub ? h('div', { class: 'metric-sub' }, sub) : null);
+  const closed = booking.bookedNetMin != null && d.sessions.length;
+  const workMetric = closed
+    ? metric('Arbeitszeit', h('span', { class: 'num', 'data-testid': 'net' }, fmtDuration(row.bookedNetMin)), quarter ? `gestempelt ${fmtDuration(d.netMin)}` : null)
+    : metric('Arbeitszeit', h('span', { class: 'num', 'data-testid': 'net' }, fmtDuration(d.netMin)),
+      booking.firstBooked != null ? (quarter ? `gebucht ab ${timeOfDay(booking.firstBooked)}` : `ab ${timeOfDay(booking.firstBooked)}`) : 'noch nicht begonnen');
+  const breakMetric = closed
+    ? metric('Pause', h('span', { class: 'num', 'data-testid': 'breaks' }, fmtDuration(row.bookedBreakMin)), quarter ? `gestempelt ${fmtDuration(d.breakMin + d.autoBreakMin)}` : null)
+    : metric('Pause', h('span', { class: 'num', 'data-testid': 'breaks' }, fmtDuration(d.breakMin + d.autoBreakMin)),
+      d.openBreak ? `läuft seit ${timeOfDay(d.openBreak.start)}` : d.breaks.length ? `${d.breaks.length} Pause${d.breaks.length === 1 ? '' : 'n'}` : 'keine');
+  const diffCount = booking.stamps.filter((x) => x.effect !== 0).length;
+  const diffMetric = quarter ? metric('Differenz', h('span', { 'data-testid': 'diff' }, signed(booking.effect)),
+    diffCount ? `aus ${diffCount} Stempel${diffCount === 1 ? '' : 'n'}` : 'keine') : null;
 
   // Vorschlag zum Ausgleich beim Gehen (nur während der Arbeit)
-  let leaveTile = null;
+  let leaveMetric = null;
   if (quarter && st.mode !== 'idle') {
     const sug = suggestLeave(now, acc.balance, interval);
     if (sug) {
       const rest = acc.balance + sug.effect;
       const text = sug.effect === 0
         ? 'zur vollen Viertelstunde gehen – Konto bleibt ±0'
-        : `→ gebucht ${timeOfDay(sug.booked)} (${fmtDuration(sug.effect, { sign: true })})${rest !== 0 ? `, danach Konto ${fmtDuration(rest, { sign: true })}` : ', Konto dann ±0'}`;
-      leaveTile = stat('Ausgleichen: gehen um', h('span', { class: 'num', 'data-testid': 'leave' }, timeOfDay(sug.leave)), text, { wide: true });
+        : `gebucht ${timeOfDay(sug.booked)} (${fmtDuration(sug.effect, { sign: true })}), danach ${rest !== 0 ? `Konto ${fmtDuration(rest, { sign: true })}` : 'Konto ±0'}`;
+      leaveMetric = metric('Ausgleichen: gehen um', h('span', { class: 'num', 'data-testid': 'leave' }, timeOfDay(sug.leave)), text);
     }
   }
 
-  const balanceTile = stat('Zeitkonto', h('span', { 'data-testid': 'balance' }, signed(acc.balance)),
-    quarter ? 'Differenzminuten zur gebuchten Viertelstunde, inkl. heute' : 'minutengenaue Erfassung: nur Anfangssaldo und Korrekturen', { wide: true });
+  const todayCard = h('div', { class: 'card' },
+    h('div', { class: 'card-head' }, h('h2', null, `Heute · ${fmtDate(workDay, { year: false })}`),
+      quarter ? h('span', { class: 'muted small' }, closed ? 'gebucht' : 'bisher') : null),
+    h('div', { class: 'metrics' }, workMetric, breakMetric, diffMetric));
+
+  const accountCard = h('div', { class: 'card' },
+    h('div', { class: 'account-row' },
+      h('div', { class: 'metric' },
+        h('div', { class: 'metric-label' }, 'Zeitkonto'),
+        h('div', { class: 'metric-value big' }, h('span', { 'data-testid': 'balance' }, signed(acc.balance))),
+        h('div', { class: 'metric-sub' }, quarter ? 'Differenzminuten, inkl. heute' : 'minutengenau: nur Anfangssaldo und Korrekturen')),
+      leaveMetric),
+    h('a', { class: 'card-link', href: '#/konto' }, 'Zeitkonto im Detail →'));
 
   return h('section', { class: 'view view-today' },
     h('div', { class: `status-card status-${st.mode}` },
@@ -119,20 +132,20 @@ export async function renderToday(app) {
         h('div', null,
           h('div', { class: 'status-mode', 'data-testid': 'status' }, MODE_LABEL[st.mode]),
           h('div', { class: 'status-since' }, phaseInfo)),
-        h('div', { class: 'status-date' }, fmtDate(workDay), h('br'), statusBadge(d.status, info?.dayType))),
+        h('div', { class: 'status-date' }, h('span', { class: 'nowrap' }, fmtDate(workDay, { year: false })), d.status !== 'running' && d.status !== 'empty' ? statusBadge(d.status, info?.dayType) : null)),
       h('div', { class: 'actions' }, actions),
       quick),
-    h('div', { class: 'stats' }, workTile, breakTile, diffTile, balanceTile, leaveTile),
     warnings,
     issueList(d.issues.filter((i) => i.code !== 'stale-open')),
+    todayCard,
+    accountCard,
     h('div', { class: 'card' },
       h('div', { class: 'card-head' },
         h('h2', null, 'Buchungen'),
         h('a', { class: 'btn btn-small', href: `#/tag/${workDay}` }, 'Tag bearbeiten')),
       entryList(workDay, d, { booking, onChoose: quarter ? (s) => chooseBookingDialog(app, data.intervals, s, workDay, interval, acc.balance) : null }),
       quarter && booking.stamps.length
-        ? h('p', { class: 'muted small' }, 'Tipp auf eine Zeit: gebuchte Viertelstunde wählen (z. B. 08:45 oder 09:00) – die Differenz wird mit dem Zeitkonto verrechnet.') : null,
-      h('div', { class: 'card-foot' },
-        h('a', { href: `#/taetigkeiten/${workDay}` }, 'Tätigkeit erfassen →'))),
+        ? h('p', { class: 'muted small' }, '✎ Zeit antippen, um die gebuchte Zeit zu wählen (z. B. 08:45 oder 09:00) – die Differenz wird mit dem Zeitkonto verrechnet.') : null,
+      h('a', { class: 'card-link', href: `#/taetigkeiten/${workDay}` }, 'Tätigkeiten erfassen →')),
   );
 }

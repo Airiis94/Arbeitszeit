@@ -29,12 +29,17 @@ export async function renderActivities(app, params) {
   if (chk.target > 0 || sum > 0) {
     const label = chk.running ? `Netto-Arbeitszeit bisher (Tag läuft): ${fmtDuration(chk.target)}` : `Festgelegte Netto-Arbeitszeit: ${fmtDuration(chk.target)}`;
     let text;
-    let cls;
-    if (chk.gap === 0) { text = '✓ Tätigkeiten entsprechen genau der Netto-Arbeitszeit.'; cls = 'notice-ok'; }
-    else if (chk.gap > 0) { text = `Noch ${fmtDuration(chk.gap)} Tätigkeiten zuordnen.`; cls = 'notice-warn'; }
-    else { text = `Die Tätigkeiten sind ${fmtDuration(-chk.gap)} länger als die Netto-Arbeitszeit – bitte kürzen.`; cls = 'notice-error'; }
-    status = h('div', { class: `notice ${cls}`, 'data-testid': 'activity-check' },
-      h('div', null, label, ` · Tätigkeiten: ${fmtDuration(sum)}`), h('b', null, text));
+    let state;
+    if (chk.gap === 0) { text = '✓ Tätigkeiten entsprechen genau der Netto-Arbeitszeit.'; state = 'ok'; }
+    else if (chk.gap > 0) { text = `Noch ${fmtDuration(chk.gap)} Tätigkeiten zuordnen.`; state = 'open'; }
+    else { text = `Die Tätigkeiten sind ${fmtDuration(-chk.gap)} länger als die Netto-Arbeitszeit – bitte kürzen.`; state = 'over'; }
+    const bar = h('div', { class: 'progress-bar' });
+    // Breite per CSSOM (Inline-Stilattribute sind durch die Content-Security-Policy gesperrt)
+    bar.style.width = `${chk.target > 0 ? Math.min(100, Math.round((sum / chk.target) * 100)) : 100}%`;
+    status = h('div', { class: `card act-progress act-${state}`, 'data-testid': 'activity-check' },
+      h('div', { class: 'act-progress-head' }, h('span', null, label), h('b', null, `${fmtDuration(sum)} / ${fmtDuration(chk.target)}`)),
+      h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': chk.target, 'aria-valuenow': sum }, bar),
+      h('div', { class: 'act-progress-text' }, text));
   }
 
   return h('section', { class: 'view view-activities' },
@@ -44,18 +49,23 @@ export async function renderActivities(app, params) {
       h('a', { class: 'btn btn-small', href: `#/taetigkeiten/${addDays(day, 1)}`, 'aria-label': 'Folgetag' }, '›')),
     status,
     h('button', { type: 'button', class: 'btn btn-primary btn-block', 'data-testid': 'add-activity', onclick: () => editActivityDialog(app, day, null, categories, suggest, { activities: data.activities, settings: data.settings }) }, '+ Tätigkeit erfassen'),
-    acts.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'act-table' },
-      h('thead', null, h('tr', null, ['Bezeichnung', 'Dauer', 'Intensität', 'Kategorie', ''].map((t) => h('th', null, t)))),
-      h('tbody', null, acts.map((a) => h('tr', null,
-        h('td', null, h('div', { class: 'act-title' }, a.title), a.description ? h('div', { class: 'act-desc' }, a.description) : null),
-        h('td', { class: 'num' }, fmtDuration(a.minutes)),
-        h('td', null, a.intensity ? h('span', { class: `badge int-${a.intensity}` }, a.intensity) : ''),
-        h('td', null, a.category || ''),
-        h('td', { class: 'nowrap' },
-          h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Bearbeiten', onclick: () => editActivityDialog(app, day, a, categories) }, '✎'),
-          h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Löschen', onclick: () => remove(a) }, '🗑'))))),
-      h('tfoot', null, h('tr', null,
-        h('th', null, 'Summe'), h('th', { class: 'num', 'data-testid': 'activity-sum' }, fmtDuration(sum)), h('th', { colspan: 3 }, `Netto-Arbeitszeit: ${fmtDuration(chk.target)}`)))))
+    acts.length ? h('div', { class: 'card' },
+      h('div', { class: 'card-head' }, h('h2', null, `Erfasste Tätigkeiten (${acts.length})`)),
+      h('ul', { class: 'act-list' }, acts.map((a) => h('li', { class: 'act-item' },
+        h('div', { class: 'act-body' },
+          h('div', { class: 'act-title' }, a.title),
+          a.category || a.intensity ? h('div', { class: 'act-meta' },
+            a.category ? h('span', { class: 'badge badge-soft' }, a.category) : null,
+            a.intensity ? h('span', { class: `badge int-${a.intensity}` }, `Intensität ${a.intensity}`) : null) : null,
+          a.description ? h('div', { class: 'act-desc' }, a.description) : null),
+        h('div', { class: 'act-side' },
+          h('span', { class: 'act-dur' }, fmtDuration(a.minutes)),
+          h('div', { class: 'act-actions' },
+            h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Bearbeiten', onclick: () => editActivityDialog(app, day, a, categories) }, '✎'),
+            h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Löschen', onclick: () => remove(a) }, '🗑')))))),
+      h('div', { class: 'act-total' },
+        h('span', null, 'Summe'),
+        h('span', null, h('b', { 'data-testid': 'activity-sum' }, fmtDuration(sum)), h('span', { class: 'muted' }, ` von ${fmtDuration(chk.target)} netto`))))
       : h('p', { class: 'muted' }, 'Für diesen Tag sind noch keine Tätigkeiten dokumentiert.'),
-    h('p', { class: 'muted small' }, h('a', { href: `#/tag/${day}` }, 'Zur Tagesansicht')));
+    h('a', { class: 'card-link', href: `#/tag/${day}` }, 'Zur Tagesansicht →'));
 }

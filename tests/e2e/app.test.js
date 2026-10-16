@@ -477,6 +477,20 @@ test('Hilfe & Installation ist über den Kopfbereich erreichbar und mobil lesbar
   await page.waitForSelector('h1:has-text("Hilfe & Installation")');
 });
 
+test('Kopfzeile zeigt die aktuelle Ansicht; Ansichtswechsel schließt offene Dialoge ohne Speichern', async () => {
+  for (const [hash, title] of [['heute', 'Heute'], ['kalender', 'Kalender'], [`tag/${DAY}`, 'Tagesansicht'], ['taetigkeiten', 'Tätigkeiten'], ['konto', 'Zeitkonto'], ['einstellungen', 'Einstellungen']]) {
+    await page.goto(`${base}#/${hash}`);
+    await page.waitForFunction((t) => document.getElementById('topbar-title')?.textContent === t, title);
+  }
+  await page.goto(`${base}#/taetigkeiten/${DAY}`);
+  await click('add-activity');
+  await page.fill('dialog input[name=title]', 'nicht speichern');
+  await page.goBack(); // z. B. Zurück-Taste am Handy
+  await page.waitForSelector('dialog', { state: 'detached' });
+  const acts = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.length);
+  assert.equal(acts, 0);
+});
+
 test('Kein horizontaler Überlauf auf kleinen Handys (360 px)', async () => {
   await page.setViewportSize({ width: 360, height: 740 });
   await workday();

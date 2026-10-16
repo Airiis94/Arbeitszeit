@@ -56,14 +56,14 @@ export async function renderDay(app, params) {
     two('Arbeitszeit', fmtDuration(d.netMin), row.bookedNetMin == null ? '–' : fmtDuration(row.bookedNetMin), 'strong')));
   const diffs = booking.stamps.filter((x) => x.dir !== 'exact');
   const diffCard = h('div', { class: 'card' },
-    h('div', { class: 'card-head' }, h('h2', null, 'Zeitkonto')),
+    h('div', { class: 'card-head' }, h('h2', null, 'Zeitkonto an diesem Tag')),
     diffs.length ? h('table', { class: 'calc', 'data-testid': 'deviation' }, h('tbody', null,
       diffs.map((x) => h('tr', null, h('th', { scope: 'row' }, stampText(x, day).replace(/ \([^)]*\)$/, '')), h('td', null, signed(x.effect)))),
       h('tr', { class: 'strong' }, h('th', { scope: 'row' }, 'Differenz des Tages'), h('td', null, signed(row.effect))),
       row.correction ? h('tr', null, h('th', { scope: 'row' }, 'Korrektur an diesem Tag'), h('td', null, signed(row.correction))) : null,
       row.balance != null ? h('tr', null, h('th', { scope: 'row' }, 'Zeitkonto nach dem Tag'), h('td', null, signed(row.balance))) : null))
       : h('p', { class: 'muted' }, bookingInterval(settings) === 1 ? 'Minutengenaue Erfassung: gebucht wird genau wie gestempelt, es entstehen keine Differenzminuten.' : d.sessions.length ? 'Alle Zeiten liegen genau auf der Viertelstunde – keine Differenz.' : 'Noch keine Buchungen.'),
-    diffs.length ? h('p', { class: 'muted small' }, 'Die Differenz zwischen gestempelter und gebuchter Viertelstunde geht ins Zeitkonto. In der Liste oben auf eine Zeit tippen, um die andere Viertelstunde zu buchen.') : null);
+    diffs.length ? h('p', { class: 'muted small' }, 'Die Differenz zwischen gestempelter und gebuchter Zeit geht ins Zeitkonto. In der Liste oben eine Zeit (✎) antippen, um die gebuchte Zeit zu wählen.') : null);
 
   const sessionsEdit = {
     onEdit: (rec) => (rec.kind === 'work' ? editWorkDialog(app, day, rec) : editBreakDialog(app, day, rec, d.sessions)),
@@ -90,7 +90,7 @@ export async function renderDay(app, params) {
         h('button', { type: 'button', class: 'btn', onclick: () => editWorkDialog(app, day) }, '+ Arbeitsphase'),
         h('button', { type: 'button', class: 'btn', onclick: () => editBreakDialog(app, day, null, d.sessions) }, '+ Pause')),
       h('div', { class: 'quick' },
-        h('span', { class: 'quick-label' }, 'Pause (Dauer):'),
+        h('span', { class: 'quick-label' }, 'Pause ohne Uhrzeit nachtragen (Minuten):'),
         [15, 30, 45, 60].map((m) => h('button', { type: 'button', class: 'chip', onclick: () => quickBreak(app, day, m) }, `${m}`)))),
     diffCard,
     h('div', { class: 'card' },
