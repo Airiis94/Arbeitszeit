@@ -420,11 +420,13 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 }
 .entry-break { border-left-color: var(--btn-pause); }
 .entry-main {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px 6px;
 }
+/* Bearbeiten/Löschen rechtsbündig; bei Platzmangel in eigener Zeile statt über den Rand */
+.entry-main .icon-btn:first-of-type { margin-left: auto; }
 .entry-kind { font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--work-bg); color: var(--work); }
 .entry-break .entry-kind { background: var(--break-bg); color: var(--break); }
 .entry-range { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
