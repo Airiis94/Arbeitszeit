@@ -754,6 +754,9 @@ textarea.input { min-height: 80px; resize: vertical; }
 .ps-table thead th { text-align: center; vertical-align: middle; font-weight: 700; }
 .ps-day { width: 4%; text-align: center !important; vertical-align: middle !important; font-weight: 400; }
 .ps-day span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+/* Tagesarbeitszeit: gleich schmal wie die Tagesspalte, senkrecht, kleine Schrift */
+.ps-times { text-align: center !important; vertical-align: middle !important; padding: 2px 0 !important; }
+.ps-times span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: pre; font-size: 8px; line-height: 1.25; font-variant-numeric: tabular-nums; display: inline-block; }
 .ps-text, .ps-side { overflow-wrap: anywhere; }
 .ps-info { font-style: italic; font-size: 9.5px; }
 .ps-num { text-align: center !important; font-variant-numeric: tabular-nums; }

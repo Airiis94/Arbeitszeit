@@ -1,8 +1,8 @@
 // Ausbildungsnachweis: Wochenblätter im Layout der Vorlage „Ausbildungsnachweise_m_Deckblatt“.
 //
-// Je Tag: die Tätigkeiten mit Einzelstunden. Spalte „Ausbildungsabteilung & Tagesarbeitszeit“: zuerst je
-// Tätigkeit die Abteilung (= Kategorie, in der Zeile der Tätigkeit), direkt darunter je eine Zelle
-// „Arbeitszeit 08:45–17:00“ und „Pause 0:30“ – jede Zelle einzeilig. Laufende Tage zählen erst nach Feierabend.
+// Je Tag: links der Wochentag (senkrecht), daneben eine gleich schmale Spalte mit der gebuchten
+// Tagesarbeitszeit und Pause (senkrecht, kleine Schrift), dann die Tätigkeiten mit Einzelstunden und
+// in der letzten Spalte die Ausbildungsabteilung (= Kategorie). Laufende Tage zählen erst nach Feierabend.
 // Mo–Fr haben mindestens 5 Zeilen, Samstag 3 (wie in der Vorlage); bei mehr Einträgen wächst der Block.
 // Sonntag erscheint nur, wenn an dem Tag etwas erfasst wurde.
 
@@ -15,8 +15,8 @@ import { DAY_TYPES } from './model.js';
 import { buildXlsx, STYLE } from './xlsx.js';
 
 const MIN_ROWS = [5, 5, 5, 5, 5, 3, 3];
-// Zeichen je Zeile in „Ausgeführte Arbeiten“ (B:C)
-const TEXT_WIDTH = 42;
+// Zeichen je Zeile in „Ausgeführte Arbeiten“ (C:D)
+const TEXT_WIDTH = 40;
 
 /** Nachweis-Nr. = Woche seit Ausbildungsbeginn (1 = Woche des Beginns). */
 export function reportNumber(weekStart, trainingStart) {
@@ -35,20 +35,16 @@ export function trainingYear(weekStart, trainingStart) {
   return Math.max(0, years) + 1;
 }
 
-/** Gebuchte Tagesarbeitszeit als einzeilige Zellen: „Arbeitszeit 08:45–17:15“, „Pause 0:30“. */
+/** Gebuchte Tagesarbeitszeit für die schmale senkrechte Spalte: [„08:45–17:15“, …, „Pause 0:30“]. */
 function workTimes(day, d, booked) {
   if (!d.sessions.length) return null;
   const ranges = booked.items
     .filter((it) => it.rec.kind === 'work' && it.start != null)
     .sort((a, b) => a.start - b.start)
     .map((it) => `${fmtTimeRel(it.start, day)}–${it.end != null ? fmtTimeRel(it.end, day) : '…'}`);
-  // mehrere Arbeitsphasen: je Phase eine Zelle, damit jede Zelle einzeilig bleibt
-  const out = ranges.map((r, i) => (i === 0 ? `Arbeitszeit ${r}` : `und ${r}`));
   let pause = `Pause ${fmtDuration(booked.bookedBreakMin)}`;
-  if (d.status === 'running') pause += ' (läuft)';
-  if (d.status === 'incomplete' || d.status === 'conflict') pause += ' (prüfen)';
-  out.push(pause);
-  return out;
+  if (d.status === 'incomplete' || d.status === 'conflict') pause += ' (!)';
+  return [...ranges, pause];
 }
 
 /**
@@ -103,20 +99,15 @@ const hours = (min) => Math.round((min / 60) * 10000) / 10000;
 
 /**
  * Zeilen eines Tagesblocks (für Excel und Druckansicht gleich): je Zeile Tätigkeit, Einzelstunden und
- * rechte Spalte – zuerst die Abteilung der Tätigkeit dieser Zeile, direkt nach der letzten Tätigkeit je
- * eine Zeile Arbeitszeit und Pause. Mindestens `minRows` Zeilen.
- * @returns [{ text, info, minutes, side: [Text] (höchstens einer), sideInfo }]
+ * Ausbildungsabteilung. Mindestens `minRows` Zeilen. Die Tagesarbeitszeit steht separat (day.times).
+ * @returns [{ text, info, minutes, dept }]
  */
 export function dayBlockRows(day) {
-  const k = day.lines.length;
-  const times = day.times || [];
-  const n = Math.max(day.minRows, k + times.length, 1);
+  const n = Math.max(day.minRows, day.lines.length, 1);
   const rows = [];
   for (let i = 0; i < n; i += 1) {
     const line = day.lines[i];
-    const time = i >= k ? times[i - k] : null;
-    const side = line?.dept ? [line.dept] : time ? [time] : [];
-    rows.push({ text: line ? line.text : '', info: !!line?.info, minutes: line?.minutes ?? null, side, sideInfo: !!time });
+    rows.push({ text: line ? line.text : '', info: !!line?.info, minutes: line?.minutes ?? null, dept: line?.dept || '' });
   }
   return rows;
 }
@@ -135,26 +126,29 @@ export function weekSheet(rep, sheetName) {
   const rowHeights = { 3: 22, 7: 30 };
   const put = (ref, v, style, f) => cells.push({ ref, v, style, f });
 
-  put('C1', `Name: ${rep.name || '____________________________'}`, STYLE.plain);
-  merges.push('C1:I1');
+  // Spalten: A Tag · B Tagesarbeitszeit (senkrecht) · C:D Tätigkeiten · E Einzelstunden · F Stunden gesamt ·
+  // G Pause · H Stunden netto · I:J Ausbildungsabteilung
+  put('D1', `Name: ${rep.name || '____________________________'}`, STYLE.plain);
+  merges.push('D1:J1');
   put('A3', `Ausbildungsnachweis Nr. ${rep.nr ?? '______'}`, STYLE.title);
-  merges.push('A3:B3');
-  put('C3', `für die Woche vom ${fmtDate(rep.weekStart, { weekday: false })} bis ${fmtDate(rep.weekEnd, { weekday: false })}`, STYLE.plain);
-  merges.push('C3:I3');
-  put('C5', `Ausbildungsjahr: ${rep.year ? `${rep.year}.` : '______'}   (KW ${rep.kw})`, STYLE.plain);
-  merges.push('C5:I5');
+  merges.push('A3:C3');
+  put('D3', `für die Woche vom ${fmtDate(rep.weekStart, { weekday: false })} bis ${fmtDate(rep.weekEnd, { weekday: false })}`, STYLE.plain);
+  merges.push('D3:J3');
+  put('D5', `Ausbildungsjahr: ${rep.year ? `${rep.year}.` : '______'}   (KW ${rep.kw})`, STYLE.plain);
+  merges.push('D5:J5');
 
   put('A7', '', STYLE.header);
-  put('B7', 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.', STYLE.header);
-  put('C7', '', STYLE.header);
-  merges.push('B7:C7');
-  put('D7', 'Einzel-stunden', STYLE.header);
-  put('E7', 'Stunden gesamt', STYLE.header);
-  put('F7', 'Pause', STYLE.header);
-  put('G7', 'Stunden netto', STYLE.header);
-  put('H7', 'Ausbildungsabteilung & Tagesarbeitszeit', STYLE.header);
-  put('I7', '', STYLE.header);
-  merges.push('H7:I7');
+  put('B7', '', STYLE.header);
+  put('C7', 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.', STYLE.header);
+  put('D7', '', STYLE.header);
+  merges.push('C7:D7');
+  put('E7', 'Einzel-stunden', STYLE.header);
+  put('F7', 'Stunden gesamt', STYLE.header);
+  put('G7', 'Pause', STYLE.header);
+  put('H7', 'Stunden netto', STYLE.header);
+  put('I7', 'Ausbildungsabteilung', STYLE.header);
+  put('J7', '', STYLE.header);
+  merges.push('I7:J7');
 
   let r = 8;
   const lastRows = [];
@@ -165,53 +159,54 @@ export function weekSheet(rep, sheetName) {
     rows.forEach((line, i) => {
       const row = r + i;
       put(`A${row}`, i === 0 ? day.label : '', STYLE.dayLabel);
-      put(`B${row}`, line.text, line.info ? STYLE.info : STYLE.text);
-      put(`C${row}`, '', STYLE.text);
-      merges.push(`B${row}:C${row}`);
-      put(`D${row}`, line.minutes != null ? hours(line.minutes) : '', STYLE.hours);
-      put(`E${row}`, '', STYLE.hours);
+      put(`B${row}`, i === 0 && day.times ? day.times.join('\n') : '', STYLE.dayTimes);
+      put(`C${row}`, line.text, line.info ? STYLE.info : STYLE.text);
+      put(`D${row}`, '', STYLE.text);
+      merges.push(`C${row}:D${row}`);
+      put(`E${row}`, line.minutes != null ? hours(line.minutes) : '', STYLE.hours);
       put(`F${row}`, '', STYLE.hours);
       put(`G${row}`, '', STYLE.hours);
-      put(`H${row}`, line.side[0] || '', line.sideInfo ? STYLE.info : STYLE.text);
-      put(`I${row}`, '', STYLE.text);
-      merges.push(`H${row}:I${row}`);
-      // Rechte Spalte ist immer einzeilig; nur sehr lange Tätigkeiten brechen um (höchstens 4 Zeilen)
+      put(`H${row}`, '', STYLE.hours);
+      put(`I${row}`, line.dept, STYLE.text);
+      put(`J${row}`, '', STYLE.text);
+      merges.push(`I${row}:J${row}`);
+      // Nur sehr lange Tätigkeiten brechen um (höchstens 4 Zeilen); sonst alle Zeilen gleich hoch
       const needed = line.text ? wrapLines([line.text], TEXT_WIDTH) : 1;
       if (needed > 1) rowHeights[row] = 12.75 * Math.min(4, needed);
     });
-    merges.push(`A${first}:A${last}`);
+    merges.push(`A${first}:A${last}`, `B${first}:B${last}`);
     // Tageswerte in der untersten Zeile des Tagesblocks (wie „Gesamtstunden“ in der Vorlage)
     if (day.worked) {
-      put(`E${last}`, hours(day.grossMin), STYLE.dayHours);
-      put(`F${last}`, hours(day.breakMin), STYLE.dayHours);
+      put(`F${last}`, hours(day.grossMin), STYLE.dayHours);
+      put(`G${last}`, hours(day.breakMin), STYLE.dayHours);
     }
-    put(`G${last}`, hours(day.netMin), STYLE.totalHours);
+    put(`H${last}`, hours(day.netMin), STYLE.totalHours);
     lastRows.push(last);
     r = last + 1;
   }
   const sum = (col) => `SUM(${lastRows.map((x) => `${col}${x}`).join(',')})`;
-  put(`B${r}`, 'Summe der Woche', STYLE.weekLabel);
-  put(`C${r}`, '', STYLE.weekLabel);
+  put(`C${r}`, 'Summe der Woche', STYLE.weekLabel);
   put(`D${r}`, '', STYLE.weekLabel);
-  merges.push(`B${r}:D${r}`);
-  put(`E${r}`, hours(rep.totalGrossMin), STYLE.dayHours, sum('E'));
-  put(`F${r}`, hours(rep.totalBreakMin), STYLE.dayHours, sum('F'));
-  put(`G${r}`, hours(rep.totalMin), STYLE.totalHours, sum('G'));
+  put(`E${r}`, '', STYLE.weekLabel);
+  merges.push(`C${r}:E${r}`);
+  put(`F${r}`, hours(rep.totalGrossMin), STYLE.dayHours, sum('F'));
+  put(`G${r}`, hours(rep.totalBreakMin), STYLE.dayHours, sum('G'));
+  put(`H${r}`, hours(rep.totalMin), STYLE.totalHours, sum('H'));
   rowHeights[r] = 18;
   r += 1;
-  put(`B${r}`, 'Wochenarbeitszeit (Summe Stunden netto)', STYLE.weekLabel);
-  for (const c of ['C', 'D', 'E', 'F']) put(`${c}${r}`, '', STYLE.weekLabel);
-  merges.push(`B${r}:F${r}`);
-  put(`G${r}`, hours(rep.totalMin), STYLE.totalHours, sum('G'));
+  put(`C${r}`, 'Wochenarbeitszeit (Summe Stunden netto)', STYLE.weekLabel);
+  for (const c of ['D', 'E', 'F', 'G']) put(`${c}${r}`, '', STYLE.weekLabel);
+  merges.push(`C${r}:G${r}`);
+  put(`H${r}`, hours(rep.totalMin), STYLE.totalHours, sum('H'));
   rowHeights[r] = 20;
 
   put(`A${r + 2}`, 'Für die Richtigkeit', STYLE.italic);
   put(`A${r + 5}`, '________    _______________________________', STYLE.plain);
-  put(`E${r + 5}`, '________    ________________________', STYLE.plain);
+  put(`F${r + 5}`, '________    ________________________', STYLE.plain);
   put(`A${r + 6}`, 'Datum               Unterschrift des Auszubildenden', STYLE.small);
-  put(`E${r + 6}`, 'Datum               Unterschrift des Ausbilders', STYLE.small);
+  put(`F${r + 6}`, 'Datum               Unterschrift des Ausbilders', STYLE.small);
 
-  return { name: sheetName, cols: [5, 36, 4, 7, 7.5, 7, 7.5, 3, 21], rowHeights, cells, merges };
+  return { name: sheetName, cols: [5, 5, 35, 3, 7, 7.5, 7, 7.5, 3, 18], rowHeights, cells, merges };
 }
 
 /** Alle Wochen (Montag) im Zeitraum [from, to]. */

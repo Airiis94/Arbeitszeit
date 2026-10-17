@@ -656,12 +656,12 @@ test('Wochentabelle: Druckansicht wie der Nachweis, druckbar als PDF auf einer A
   await click('week-print');
   await page.waitForSelector('[data-testid=print-sheet]');
   const rows = await page.$$eval('[data-testid=print-sheet] tbody tr', (trs) => trs.map((tr) => [...tr.children].map((c) => c.innerText.trim())));
-  // Montag: Abteilung in der Zeile der Tätigkeit, danach je eine Zelle Arbeitszeit und Pause
-  assert.deepEqual(rows[0], ['Montag', 'Löten', '4,00', '', '', '', 'Werkstatt']);
+  // Montag: Tag | Tagesarbeitszeit (senkrecht) | Tätigkeit | … | Abteilung
+  assert.deepEqual(rows[0], ['Montag', '08:00–16:45\nPause 0:30', 'Löten', '4,00', '', '', '', 'Werkstatt']);
   assert.deepEqual(rows[1], ['Messen', '4,25', '', '', '', '']);
-  assert.deepEqual(rows[2], ['', '', '', '', '', 'Arbeitszeit 08:00–16:45']);
-  assert.deepEqual(rows[3], ['', '', '', '', '', 'Pause 0:30']);
-  assert.ok(!rows.flat().some((c) => c.includes('\n')), 'jede Zelle einzeilig');
+  const timesWidth = await page.$eval('[data-testid=print-times]', (td) => td.getBoundingClientRect().width);
+  const dayWidth = await page.$eval('.ps-day', (th) => th.getBoundingClientRect().width);
+  assert.ok(Math.abs(timesWidth - dayWidth) <= 1, `gleich breit: ${timesWidth} / ${dayWidth}`);
   // unterste Zeile des Tages: Stunden gesamt, Pause, netto
   assert.deepEqual(rows[4].slice(2, 5), ['8,75', '0,50', '8,25']); // gebucht 08:00–16:45, Pause 0:30
   assert.equal(await text('print-week-total'), '8,25');
@@ -700,11 +700,10 @@ test('Ausbildungsnachweis als Excel aus der Wochenansicht und den Einstellungen'
   assert.equal(bytes.subarray(0, 2).toString(), 'PK');
   const text = bytes.toString('utf8');
   assert.match(text, /<sheet name="KW10"/);
-  // Spalte „Ausbildungsabteilung & Tagesarbeitszeit“: Abteilung, darunter Arbeitszeit und Pause je eine Zelle
+  // Tagesarbeitszeit senkrecht neben dem Wochentag; letzte Spalte nur Ausbildungsabteilung
+  assert.match(text, /<c r="B8" s="14" t="inlineStr"><is><t xml:space="preserve">08:00–16:45\nPause 0:30<\/t>/);
   assert.match(text, />Werkstatt<\/t>/);
-  assert.match(text, />Arbeitszeit 08:00–16:45<\/t>/);
-  assert.match(text, />Pause 0:30<\/t>/);
-  assert.match(text, /Ausbildungsabteilung &amp; Tagesarbeitszeit/);
+  assert.match(text, />Ausbildungsabteilung<\/t>/);
   assert.match(text, /Stunden gesamt/);
   assert.match(text, /Stunden netto/);
   assert.match(text, /Wochenarbeitszeit \(Summe Stunden netto\)/);

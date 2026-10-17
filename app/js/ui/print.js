@@ -10,18 +10,19 @@ const dec = (min) => (min / 60).toFixed(2).replace('.', ',');
 
 /** Wochentabelle als HTML-Blatt. */
 export function weekPrintSheet(rep) {
-  const head = ['', 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.', 'Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung & Tagesarbeitszeit'];
+  const head = ['', '', 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.', 'Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung'];
   const body = rep.days.flatMap((day) => {
     const rows = dayBlockRows(day);
     const lastIdx = rows.length - 1;
     return rows.map((r, i) => h('tr', { class: i === 0 ? 'ps-first' : null },
       i === 0 ? h('th', { rowspan: rows.length, class: 'ps-day', scope: 'rowgroup' }, h('span', null, day.label)) : null,
+      i === 0 ? h('td', { rowspan: rows.length, class: 'ps-times', 'data-testid': 'print-times' }, day.times ? h('span', null, day.times.join('\n')) : null) : null,
       h('td', { class: r.info ? 'ps-text ps-info' : 'ps-text' }, r.text),
       h('td', { class: 'ps-num' }, r.minutes != null ? dec(r.minutes) : ''),
       h('td', { class: 'ps-num' }, i === lastIdx && day.worked ? dec(day.grossMin) : ''),
       h('td', { class: 'ps-num' }, i === lastIdx && day.worked ? dec(day.breakMin) : ''),
       h('td', { class: 'ps-num ps-strong' }, i === lastIdx ? dec(day.netMin) : ''),
-      h('td', { class: r.sideInfo ? 'ps-side ps-info' : 'ps-side' }, r.side[0] || '')));
+      h('td', { class: 'ps-side' }, r.dept)));
   });
   return h('div', { class: 'print-sheet', 'data-testid': 'print-sheet' },
     h('div', { class: 'ps-name' }, `Name: ${rep.name || '______________________________'}`),
@@ -30,14 +31,14 @@ export function weekPrintSheet(rep) {
       h('span', null, `für die Woche vom ${fmtDate(rep.weekStart, { weekday: false })} bis ${fmtDate(rep.weekEnd, { weekday: false })}`)),
     h('div', { class: 'ps-year' }, `Ausbildungsjahr: ${rep.year ? `${rep.year}.` : '______'}   (KW ${rep.kw})`),
     h('table', { class: 'ps-table' },
-      h('colgroup', null, ['4%', '42%', '8%', '8.5%', '7.5%', '8.5%', '21.5%'].map((w) => h('col', { width: w }))),
+      h('colgroup', null, ['4%', '4%', '41%', '8%', '8.5%', '7.5%', '8.5%', '18.5%'].map((w) => h('col', { width: w }))),
       h('thead', null, h('tr', null, head.map((t) => h('th', null, t)))),
       h('tbody', null, body),
       h('tfoot', null,
-        h('tr', null, h('th', { colspan: 3, class: 'ps-right' }, 'Summe der Woche'),
+        h('tr', null, h('th', { colspan: 4, class: 'ps-right' }, 'Summe der Woche'),
           h('td', { class: 'ps-num' }, dec(rep.totalGrossMin)), h('td', { class: 'ps-num' }, dec(rep.totalBreakMin)),
           h('td', { class: 'ps-num ps-strong' }, dec(rep.totalMin)), h('td', null, '')),
-        h('tr', null, h('th', { colspan: 5, class: 'ps-right' }, 'Wochenarbeitszeit (Summe Stunden netto)'),
+        h('tr', null, h('th', { colspan: 6, class: 'ps-right' }, 'Wochenarbeitszeit (Summe Stunden netto)'),
           h('td', { class: 'ps-num ps-strong', 'data-testid': 'print-week-total' }, dec(rep.totalMin)), h('td', null, '')))),
     h('div', { class: 'ps-sign' },
       h('div', null, h('div', { class: 'ps-line' }), 'Datum, Unterschrift des Auszubildenden'),

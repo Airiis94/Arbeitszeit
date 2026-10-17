@@ -2,7 +2,7 @@ import { work, pause, at } from './helpers.js';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildWeekReport, buildNachweisXlsx, reportNumber, trainingYear, weekSheet } from '../../app/js/core/nachweis.js';
-import { crc32, colName, parseRef } from '../../app/js/core/xlsx.js';
+import { crc32, colName, parseRef, STYLE } from '../../app/js/core/xlsx.js';
 import { newRecord, defaultSettings } from '../../app/js/core/model.js';
 
 const MON = '2026-10-12';
@@ -70,57 +70,58 @@ describe('Ausbildungsnachweis', () => {
     assert.equal(rep.days.length, 6); // Sonntag ohne Einträge entfällt
     const mon = rep.days[0];
     assert.equal(mon.label, 'Montag');
-    assert.deepEqual(mon.times, ['Arbeitszeit 08:45–17:15', 'Pause 0:30']);
+    assert.deepEqual(mon.times, ['08:45–17:15', 'Pause 0:30']);
     // Die Tätigkeiten-Spalte enthält nur Tätigkeiten
     assert.deepEqual(mon.lines.map((l) => [l.text, l.minutes, l.dept]), [
       ['Löten', 240, 'Werkstatt'], ['Messen – Oszilloskop <RC> & Co', 150, 'Werkstatt'], ['Unterweisung', 90, 'Ausbildungsleitung']]);
     assert.equal(mon.netMin, 480);
-    assert.deepEqual(rep.days[1].times, ['Arbeitszeit 07:30–13:00', 'Pause 0:00']);
+    assert.deepEqual(rep.days[1].times, ['07:30–13:00', 'Pause 0:00']);
     assert.equal(rep.days[1].lines.length, 0);
     assert.equal(rep.days[2].lines.length, 6); // mehr als 5 Einträge → Block wächst
     assert.equal(rep.days[3].lines[0].text, 'Krank');
     assert.equal(rep.totalMin, 480 + 330);
   });
 
-  test('Tabellenblatt: Stunden gesamt / Pause / Stunden netto, Wochenarbeitszeit = Summe netto', () => {
+  test('Tabellenblatt: Tag | Tagesarbeitszeit (senkrecht) | Tätigkeiten | Stunden | Ausbildungsabteilung', () => {
     const rep = buildWeekReport({ weekStart: MON, ...data(), now: at('2026-10-20', '12:00') });
     const sh = weekSheet(rep, 'KW42');
     const cell = (ref) => sh.cells.filter((c) => c.ref === ref).pop();
     assert.equal(cell('A3').v, 'Ausbildungsnachweis Nr. 7');
-    assert.equal(cell('B7').v, 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.');
-    assert.deepEqual(['D7', 'E7', 'F7', 'G7', 'H7'].map((r) => cell(r).v),
-      ['Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung & Tagesarbeitszeit']);
+    assert.equal(cell('C7').v, 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.');
+    assert.deepEqual(['E7', 'F7', 'G7', 'H7', 'I7'].map((r) => cell(r).v),
+      ['Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung']);
+    // Spalte B so schmal wie die Tagesspalte A
+    assert.equal(sh.cols[1], sh.cols[0]);
     assert.equal(cell('A8').v, 'Montag');
-    // Rechte Spalte: zuerst die Abteilungen (Zeile der Tätigkeit), darunter Arbeitszeit und Pause je eine Zelle
-    assert.deepEqual(['B8', 'B9', 'B10', 'B11', 'B12'].map((r) => cell(r).v), ['Löten', 'Messen – Oszilloskop <RC> & Co', 'Unterweisung', '', '']);
-    assert.deepEqual(['D8', 'D9', 'D10'].map((r) => cell(r).v), [4, 2.5, 1.5]);
-    assert.deepEqual(['H8', 'H9', 'H10', 'H11', 'H12'].map((r) => cell(r).v), ['Werkstatt', 'Werkstatt', 'Ausbildungsleitung', 'Arbeitszeit 08:45–17:15', 'Pause 0:30']);
-    // jede Zelle einzeilig: keine erhöhten Zeilen im Montagsblock
+    // Tagesarbeitszeit senkrecht neben dem Wochentag, über den ganzen Tagesblock verbunden
+    assert.equal(cell('B8').v, '08:45–17:15\nPause 0:30');
+    assert.equal(cell('B8').style, STYLE.dayTimes);
+    assert.ok(sh.merges.includes('B8:B12'));
+    assert.deepEqual(['C8', 'C9', 'C10', 'C11', 'C12'].map((r) => cell(r).v), ['Löten', 'Messen – Oszilloskop <RC> & Co', 'Unterweisung', '', '']);
+    assert.deepEqual(['E8', 'E9', 'E10'].map((r) => cell(r).v), [4, 2.5, 1.5]);
+    // letzte Spalte: nur die Ausbildungsabteilung
+    assert.deepEqual(['I8', 'I9', 'I10', 'I11', 'I12'].map((r) => cell(r).v), ['Werkstatt', 'Werkstatt', 'Ausbildungsleitung', '', '']);
+    assert.ok(!sh.cells.some((c) => /^[CI]\d/.test(c.ref) && /Arbeitszeit|Pause \d/.test(String(c.v))), 'Zeiten nicht bei Tätigkeiten/Abteilung');
+    // gleichmäßige Zeilen im Montagsblock
     for (const r of [8, 9, 10, 11, 12]) assert.equal(sh.rowHeights[r], undefined, `Zeile ${r}`);
-    // Dienstag ohne Tätigkeiten: Arbeitszeit und Pause oben, Tätigkeiten-Spalte leer
-    assert.equal(cell('B13').v, '');
-    assert.deepEqual(['H13', 'H14'].map((r) => cell(r).v), ['Arbeitszeit 07:30–13:00', 'Pause 0:00']);
-    assert.ok(!sh.cells.some((c) => String(c.v).includes('\n')), 'keine mehrzeiligen Zellen');
-    // keine Zeile „Arbeitszeit …“ mehr in der Tätigkeiten-Spalte
-    assert.ok(!sh.cells.some((c) => c.ref.startsWith('B') && String(c.v).startsWith('Arbeitszeit')));
+    // Dienstag ohne Tätigkeiten, Mittwoch ohne Arbeitszeit (leere Zeitspalte)
+    assert.equal(cell('B13').v, '07:30–13:00\nPause 0:00');
+    assert.equal(cell('B18').v, '');
     // Montag (unterste Zeile des Blocks): gebucht 08:45–17:15 = 8,5 h gesamt, 0,5 h Pause, 8 h netto
-    assert.deepEqual(['E12', 'F12', 'G12'].map((r) => cell(r).v), [8.5, 0.5, 8]);
-    // Dienstag 07:30–13:00 ohne Pause
-    assert.deepEqual(['E17', 'F17', 'G17'].map((r) => cell(r).v), [5.5, 0, 5.5]);
-    // Tag ohne Arbeit: nur Stunden netto 0
-    assert.equal(cell('E28').v, '');
-    assert.equal(cell('G28').v, 0);
+    assert.deepEqual(['F12', 'G12', 'H12'].map((r) => cell(r).v), [8.5, 0.5, 8]);
+    assert.deepEqual(['F17', 'G17', 'H17'].map((r) => cell(r).v), [5.5, 0, 5.5]);
+    assert.equal(cell('F28').v, '');
+    assert.equal(cell('H28').v, 0);
     assert.ok(sh.merges.includes('A8:A12'));
     assert.ok(sh.merges.includes('A18:A23')); // Mittwoch: 6 Zeilen statt 5
     const sums = sh.cells.filter((c) => c.f);
     assert.deepEqual(sums.map((c) => [c.ref, c.f, c.v]), [
-      ['E37', 'SUM(E12,E17,E23,E28,E33,E36)', 14],
-      ['F37', 'SUM(F12,F17,F23,F28,F33,F36)', 0.5],
-      ['G37', 'SUM(G12,G17,G23,G28,G33,G36)', 13.5],
-      ['G38', 'SUM(G12,G17,G23,G28,G33,G36)', 13.5],
+      ['F37', 'SUM(F12,F17,F23,F28,F33,F36)', 14],
+      ['G37', 'SUM(G12,G17,G23,G28,G33,G36)', 0.5],
+      ['H37', 'SUM(H12,H17,H23,H28,H33,H36)', 13.5],
+      ['H38', 'SUM(H12,H17,H23,H28,H33,H36)', 13.5],
     ]);
-    assert.equal(cell('B38').v, 'Wochenarbeitszeit (Summe Stunden netto)');
-    // Stunden gesamt = Pause + Stunden netto an jedem Tag
+    assert.equal(cell('C38').v, 'Wochenarbeitszeit (Summe Stunden netto)');
     for (const d of rep.days) assert.equal(d.grossMin, d.netMin + d.breakMin);
   });
 
@@ -132,13 +133,16 @@ describe('Ausbildungsnachweis', () => {
     }
     assert.match(files['xl/workbook.xml'], /<sheet name="KW42" sheetId="1"/);
     assert.match(files['xl/workbook.xml'], /<sheet name="KW43" sheetId="2"/);
+    // senkrechte, kleine Schrift für die Tagesarbeitszeit
+    assert.match(files['xl/styles.xml'], /<cellXfs count="15">/);
+    assert.match(files['xl/styles.xml'], /fontId="5"[^>]*><alignment horizontal="center" vertical="center" textRotation="90" wrapText="1"\/>/);
     const s1 = files['xl/worksheets/sheet1.xml'];
-    assert.match(s1, /<c r="H11" s="7" t="inlineStr"><is><t xml:space="preserve">Arbeitszeit 08:45–17:15<\/t>/);
-    assert.match(s1, /<c r="H12" s="7" t="inlineStr"><is><t xml:space="preserve">Pause 0:30<\/t>/);
-    assert.match(s1, /Ausbildungsabteilung &amp; Tagesarbeitszeit/);
+    assert.match(s1, /<c r="B8" s="14" t="inlineStr"><is><t xml:space="preserve">08:45–17:15\nPause 0:30<\/t>/);
+    assert.match(s1, /<mergeCell ref="B8:B12"\/>/);
+    assert.match(s1, />Ausbildungsabteilung<\/t>/);
     assert.match(s1, /fitToWidth="1"/); // druckbar: eine Seite breit
     assert.match(s1, /Messen – Oszilloskop &lt;RC&gt; &amp; Co/);
-    assert.match(s1, /<f>SUM\(G12,G17,G23,G28,G33,G36\)<\/f><v>13.5<\/v>/);
+    assert.match(s1, /<f>SUM\(H12,H17,H23,H28,H33,H36\)<\/f><v>13.5<\/v>/);
     assert.match(s1, /<mergeCell ref="A8:A12"\/>/);
     assert.match(s1, /paperSize="9"/);
   });

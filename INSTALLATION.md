@@ -60,7 +60,7 @@ Beschreibung. Tippen in „Bezeichnung“ sucht in der Liste, ✕ entfernt einen
 **Ausbildungsnachweis:** **Kalender** → **Woche** → **„Ausbildungsnachweis dieser Woche (Excel)“**
 (oder **Einstellungen** → **Ausbildungsnachweis (Excel)** für mehrere Wochen). Die Datei landet
 im Ordner „Downloads“ und lässt sich mit Excel, Google Tabellen oder LibreOffice öffnen.
-In der Spalte „Ausbildungsabteilung & Tagesarbeitszeit“ stehen zuerst die Abteilungen, darunter Arbeitszeit und Pause des Tages.
+Arbeitszeit und Pause stehen senkrecht in der schmalen Spalte direkt neben dem Wochentag.
 
 **Wochentabelle drucken oder als PDF:** **Kalender** → **Woche** → **„Wochentabelle drucken / als PDF“**,
 dann **„Drucken / als PDF speichern“**. Im Druckdialog von Chrome einen Drucker oder „Als PDF speichern“
