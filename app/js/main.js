@@ -9,6 +9,7 @@ import { renderActivities } from './ui/activities.js';
 import { renderAccount } from './ui/account.js';
 import { renderSettings } from './ui/settings.js';
 import { renderHelp } from './ui/help.js';
+import { renderPrint } from './ui/print.js';
 
 const ROUTES = {
   heute: { render: renderToday, nav: 'heute', title: 'Heute', live: true },
@@ -18,6 +19,7 @@ const ROUTES = {
   konto: { render: renderAccount, nav: 'konto', title: 'Zeitkonto' },
   einstellungen: { render: renderSettings, nav: 'einstellungen', title: 'Einstellungen' },
   hilfe: { render: renderHelp, nav: 'hilfe', title: 'Hilfe & Installation' },
+  druck: { render: renderPrint, nav: 'kalender', title: 'Druckansicht' },
 };
 
 const view = document.getElementById('view');

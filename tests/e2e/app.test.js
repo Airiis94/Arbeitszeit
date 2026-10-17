@@ -646,6 +646,35 @@ test('Kurzer Tag erzeugt keine Minusstunden', async () => {
   assert.equal(await text('net'), '2:15');
 });
 
+test('Wochentabelle: Druckansicht wie der Nachweis, druckbar als PDF auf einer A4-Seite', async () => {
+  await workday();
+  await page.evaluate(async () => {
+    await window.__app.repo.saveActivity({ day: '2026-03-02', title: 'Löten', minutes: 240, intensity: null, category: 'Werkstatt' });
+    await window.__app.repo.saveActivity({ day: '2026-03-02', title: 'Messen', minutes: 255, intensity: null, category: null });
+  });
+  await page.goto(`${base}#/kalender/woche/${DAY}`);
+  await click('week-print');
+  await page.waitForSelector('[data-testid=print-sheet]');
+  const rows = await page.$$eval('[data-testid=print-sheet] tbody tr', (trs) => trs.map((tr) => [...tr.children].map((c) => c.innerText.trim())));
+  // Montag, oberste Zeile: Tag | Löten | 4,00 | | | | Tageszeiten + Abteilung
+  assert.deepEqual(rows[0], ['Montag', 'Löten', '4,00', '', '', '', 'Arbeitszeit 08:00–16:45\nPause 0:30\nWerkstatt']);
+  assert.deepEqual(rows[1], ['Messen', '4,25', '', '', '', '']);
+  assert.ok(!rows.flat().some((c) => c.startsWith('Arbeitszeit') && !c.includes('Pause')), 'keine eigene Zeile für die Arbeitszeit');
+  // unterste Zeile des Tages: Stunden gesamt, Pause, netto
+  assert.deepEqual(rows[4].slice(2, 5), ['8,75', '0,50', '8,25']); // gebucht 08:00–16:45, Pause 0:30
+  assert.equal(await text('print-week-total'), '8,25');
+  // Druck: Kopfzeile, Navigation und Knöpfe werden ausgeblendet, nur das Blatt bleibt
+  await page.emulateMedia({ media: 'print' });
+  for (const sel of ['.topbar', '.bottom-nav', '[data-testid=print-now]']) {
+    assert.equal(await page.isVisible(sel), false, sel);
+  }
+  assert.ok(await page.isVisible('[data-testid=print-sheet]'));
+  const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true });
+  const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+  assert.equal(pages, 1, `PDF-Seiten: ${pages}`);
+  await page.emulateMedia({ media: 'screen' });
+});
+
 async function readXlsx(download) {
   const dir = await mkdtemp(join(tmpdir(), 'az-'));
   const file = join(dir, download.suggestedFilename());
@@ -669,7 +698,9 @@ test('Ausbildungsnachweis als Excel aus der Wochenansicht und den Einstellungen'
   assert.equal(bytes.subarray(0, 2).toString(), 'PK');
   const text = bytes.toString('utf8');
   assert.match(text, /<sheet name="KW10"/);
-  assert.match(text, /Arbeitszeit 08:00–16:45, Pause 0:30/);
+  // Tageszeiten in der obersten Zelle der Spalte „Ausbildungsabteilung & Tageszeiten“, nicht bei den Tätigkeiten
+  assert.match(text, /Arbeitszeit 08:00–16:45\nPause 0:30\nWerkstatt/);
+  assert.match(text, /Ausbildungsabteilung &amp; Tageszeiten/);
   assert.match(text, /Stunden gesamt/);
   assert.match(text, /Stunden netto/);
   assert.match(text, /Wochenarbeitszeit \(Summe Stunden netto\)/);

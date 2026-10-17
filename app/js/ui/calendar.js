@@ -110,9 +110,11 @@ function weekView(app, weekStart, data, acc, now, today) {
     ),
     legend(),
     summaryCard('Wochenübersicht', rows, lastBalance(rows)),
-    h('button', {
-      type: 'button', class: 'btn btn-block', 'data-testid': 'week-report', onclick: () => exportReport(app, data, weekStart, to).catch(app.error),
-    }, '⬇ Ausbildungsnachweis dieser Woche (Excel)'),
+    h('div', { class: 'btn-col' },
+      h('button', {
+        type: 'button', class: 'btn btn-block', 'data-testid': 'week-report', onclick: () => exportReport(app, data, weekStart, to).catch(app.error),
+      }, '⬇ Ausbildungsnachweis dieser Woche (Excel)'),
+      h('a', { class: 'btn btn-block', href: `#/druck/woche/${weekStart}`, 'data-testid': 'week-print' }, '🖨 Wochentabelle drucken / als PDF')),
   ];
 }
 

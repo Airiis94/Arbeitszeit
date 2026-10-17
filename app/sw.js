@@ -39,6 +39,7 @@ const PRECACHE = [
   './js/ui/editors.js',
   './js/ui/help.js',
   './js/ui/icons.js',
+  './js/ui/print.js',
   './js/ui/settings.js',
   './js/ui/today.js',
 ];

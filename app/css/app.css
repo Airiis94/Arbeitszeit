@@ -739,3 +739,36 @@ textarea.input { min-height: 80px; resize: vertical; }
   .btn-big { min-height: 64px; font-size: 1.05rem; }
   .row-2 { grid-template-columns: 1fr; }
 }
+
+/* ---------- Druckansicht Wochentabelle (Papier: bewusst weiß/schwarz in beiden Farbschemata) ---------- */
+
+.print-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 10px 0; border-radius: 6px; }
+.print-sheet { background: #fff; color: #111; padding: 18px 20px; font: 10.5px/1.35 Arial, "Helvetica Neue", sans-serif; }
+.ps-name { margin-bottom: 10px; }
+.ps-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+.ps-title h2 { margin: 0; font-size: 15px; font-style: italic; }
+.ps-year { margin: 6px 0 10px; }
+.ps-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ps-table th, .ps-table td { border: 1px solid #111; padding: 3px 4px; vertical-align: top; text-align: left; color: #111; font-size: 10.5px; text-transform: none; }
+.ps-table tbody td { height: 19px; }
+.ps-table thead th { text-align: center; vertical-align: middle; font-weight: 700; }
+.ps-day { width: 4%; text-align: center !important; vertical-align: middle !important; font-weight: 400; }
+.ps-day span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+.ps-text, .ps-side { overflow-wrap: anywhere; }
+.ps-info { font-style: italic; font-size: 9.5px; }
+.ps-num { text-align: center !important; font-variant-numeric: tabular-nums; }
+.ps-strong { font-weight: 700; }
+.ps-right { text-align: right !important; font-weight: 700; }
+.ps-table tbody tr.ps-first td, .ps-table tbody tr.ps-first th { border-top-width: 2px; }
+.ps-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 28px; font-size: 9px; }
+.ps-line { border-bottom: 1px solid #111; height: 26px; margin-bottom: 3px; }
+
+@media print {
+  @page { size: A4 portrait; margin: 10mm; }
+  body { background: #fff !important; color: #000; padding: 0 !important; }
+  .topbar, .bottom-nav, .toasts, .update-banner, .no-print, #update-banner { display: none !important; }
+  .main { max-width: none; padding: 0; }
+  .print-wrap { overflow: visible; margin: 0; }
+  .print-sheet { width: auto !important; zoom: 1 !important; padding: 0; }
+  .ps-table tr { break-inside: avoid; }
+}

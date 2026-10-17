@@ -1,8 +1,8 @@
 // Ausbildungsnachweis: Wochenblätter im Layout der Vorlage „Ausbildungsnachweise_m_Deckblatt“.
 //
-// Je Tag: erste Zeile mit den gebuchten Zeiten „Arbeitszeit 08:45–17:00, Pause 0:30“ (Viertelstunden),
-// darunter die Tätigkeiten mit Einzelstunden; „Gesamtstunden“ = gebuchte Arbeitszeit des Tages;
-// „Ausbildungsabteilung“ = Kategorie. Laufende Tage zählen erst nach Feierabend in die Gesamtstunden.
+// Je Tag: die Tätigkeiten mit Einzelstunden; die gebuchten Zeiten („Arbeitszeit 08:45–17:00“ /
+// „Pause 0:30“) stehen in der obersten Zelle der Spalte „Ausbildungsabteilung & Tageszeiten“,
+// darunter je Tätigkeit die Abteilung (= Kategorie). Laufende Tage zählen erst nach Feierabend.
 // Mo–Fr haben mindestens 5 Zeilen, Samstag 3 (wie in der Vorlage); bei mehr Einträgen wächst der Block.
 // Sonntag erscheint nur, wenn an dem Tag etwas erfasst wurde.
 
@@ -15,6 +15,9 @@ import { DAY_TYPES } from './model.js';
 import { buildXlsx, STYLE } from './xlsx.js';
 
 const MIN_ROWS = [5, 5, 5, 5, 5, 3, 3];
+// Zeichen je Zeile in „Ausgeführte Arbeiten“ (B:C) und „Ausbildungsabteilung & Tageszeiten“ (H:I)
+const TEXT_WIDTH = 42;
+const SIDE_WIDTH = 26;
 
 /** Nachweis-Nr. = Woche seit Ausbildungsbeginn (1 = Woche des Beginns). */
 export function reportNumber(weekStart, trainingStart) {
@@ -33,22 +36,23 @@ export function trainingYear(weekStart, trainingStart) {
   return Math.max(0, years) + 1;
 }
 
-function workLine(day, d, booked) {
+/** Gebuchte Tageszeiten als Zeilen: „Arbeitszeit 08:45–17:15“, „Pause 0:30“ (ggf. mit Hinweis). */
+function workTimes(day, d, booked) {
   if (!d.sessions.length) return null;
   const ranges = booked.items
     .filter((it) => it.rec.kind === 'work' && it.start != null)
     .sort((a, b) => a.start - b.start)
     .map((it) => `${fmtTimeRel(it.start, day)}–${it.end != null ? fmtTimeRel(it.end, day) : '…'}`)
     .join(', ');
-  let text = `Arbeitszeit ${ranges}, Pause ${fmtDuration(booked.bookedBreakMin)}`;
-  if (d.status === 'running') text += ' (läuft noch)';
-  if (d.status === 'incomplete' || d.status === 'conflict') text += ' (unvollständig – bitte prüfen)';
-  return text;
+  let pause = `Pause ${fmtDuration(booked.bookedBreakMin)}`;
+  if (d.status === 'running') pause += ' (läuft noch)';
+  if (d.status === 'incomplete' || d.status === 'conflict') pause += ' (unvollständig – bitte prüfen)';
+  return [`Arbeitszeit ${ranges}`, pause];
 }
 
 /**
  * Daten einer Woche für den Nachweis.
- * @returns {{ weekStart, weekEnd, kw, nr, year, name, days: [{day, label, lines:[{text, minutes, dept, info}], netMin}], totalMin }}
+ * @returns {{ weekStart, weekEnd, kw, nr, year, name, days: [{day, label, times: [text]|null, lines:[{text, minutes, dept, info}], netMin}], totalMin }}
  */
 export function buildWeekReport({ weekStart, intervals = [], activities = [], dayInfos = [], settings, now = Date.now() }) {
   const ws = startOfWeek(weekStart);
@@ -68,17 +72,16 @@ export function buildWeekReport({ weekStart, intervals = [], activities = [], da
     const info = infoByDay.get(day);
     const acts = (actsByDay.get(day) || []).sort((a, b) => a.createdAt - b.createdAt);
     const lines = [];
-    const wl = workLine(day, d, booked);
-    if (wl) lines.push({ text: wl, minutes: null, dept: '', info: true });
+    const times = workTimes(day, d, booked);
     if (info?.dayType && info.dayType !== 'arbeit') lines.push({ text: DAY_TYPES[info.dayType]?.label || info.dayType, minutes: null, dept: '', info: true });
     for (const a of acts) {
       lines.push({ text: a.description ? `${a.title} – ${a.description}` : a.title, minutes: a.minutes, dept: a.category || '', info: false });
     }
-    if (i === 6 && !lines.length) continue; // Sonntag nur bei Einträgen
+    if (i === 6 && !lines.length && !times) continue; // Sonntag nur bei Einträgen
     // Stunden gesamt = Arbeitszeit + Pause (gebucht); erst nach Feierabend, sonst 0
     const breakMin = b.bookedNetMin == null ? 0 : booked.bookedBreakMin;
     const worked = d.sessions.length > 0;
-    days.push({ day, label: WEEKDAYS_LONG[i], lines, netMin, breakMin, grossMin: netMin + breakMin, worked, minRows: MIN_ROWS[i] });
+    days.push({ day, label: WEEKDAYS_LONG[i], times, lines, netMin, breakMin, grossMin: netMin + breakMin, worked, minRows: MIN_ROWS[i] });
   }
   const report = settings.report || {};
   return {
@@ -96,6 +99,27 @@ export function buildWeekReport({ weekStart, intervals = [], activities = [], da
 }
 
 const hours = (min) => Math.round((min / 60) * 10000) / 10000;
+
+/**
+ * Zeilen eines Tagesblocks (für Excel und Druckansicht gleich): je Zeile Tätigkeit, Einzelstunden und
+ * rechte Spalte (oberste Zeile: Tageszeiten, darunter Abteilung). Mindestens `minRows` Zeilen.
+ * @returns [{ text, info, minutes, side: [Zeilen], sideInfo }]
+ */
+export function dayBlockRows(day) {
+  const n = Math.max(day.minRows, day.lines.length, 1);
+  const rows = [];
+  for (let i = 0; i < n; i += 1) {
+    const line = day.lines[i];
+    const side = [];
+    if (i === 0 && day.times) side.push(...day.times);
+    if (line?.dept) side.push(line.dept);
+    rows.push({ text: line ? line.text : '', info: !!line?.info, minutes: line?.minutes ?? null, side, sideInfo: i === 0 && !!day.times });
+  }
+  return rows;
+}
+
+/** Ungefähre Zeilenzahl eines umbrechenden Textes bei `width` Zeichen je Zeile. */
+const wrapLines = (parts, width) => parts.reduce((s, t) => s + Math.max(1, Math.ceil(t.length / width)), 0);
 
 /**
  * Wandelt einen Wochenbericht in ein Tabellenblatt (Layout der Vorlage, erweitert um
@@ -125,33 +149,33 @@ export function weekSheet(rep, sheetName) {
   put('E7', 'Stunden gesamt', STYLE.header);
   put('F7', 'Pause', STYLE.header);
   put('G7', 'Stunden netto', STYLE.header);
-  put('H7', 'Ausbildungsabteilung', STYLE.header);
+  put('H7', 'Ausbildungsabteilung & Tageszeiten', STYLE.header);
   put('I7', '', STYLE.header);
   merges.push('H7:I7');
 
   let r = 8;
   const lastRows = [];
   for (const day of rep.days) {
-    const n = Math.max(day.minRows, day.lines.length);
+    const rows = dayBlockRows(day);
     const first = r;
-    const last = r + n - 1;
-    for (let i = 0; i < n; i += 1) {
+    const last = r + rows.length - 1;
+    rows.forEach((line, i) => {
       const row = r + i;
-      const line = day.lines[i];
       put(`A${row}`, i === 0 ? day.label : '', STYLE.dayLabel);
-      put(`B${row}`, line ? line.text : '', line?.info ? STYLE.info : STYLE.text);
+      put(`B${row}`, line.text, line.info ? STYLE.info : STYLE.text);
       put(`C${row}`, '', STYLE.text);
       merges.push(`B${row}:C${row}`);
-      put(`D${row}`, line?.minutes != null ? hours(line.minutes) : '', STYLE.hours);
+      put(`D${row}`, line.minutes != null ? hours(line.minutes) : '', STYLE.hours);
       put(`E${row}`, '', STYLE.hours);
       put(`F${row}`, '', STYLE.hours);
       put(`G${row}`, '', STYLE.hours);
-      put(`H${row}`, line?.dept || '', STYLE.text);
+      put(`H${row}`, line.side.join('\n'), line.sideInfo ? STYLE.info : STYLE.text);
       put(`I${row}`, '', STYLE.text);
       merges.push(`H${row}:I${row}`);
-      const len = line ? line.text.length : 0;
-      if (len > 46) rowHeights[row] = 12.75 * Math.min(4, Math.ceil(len / 46));
-    }
+      // Zeilenhöhe nach dem längeren Inhalt (Tätigkeit bzw. Tageszeiten), höchstens 4 Zeilen
+      const needed = Math.max(line.text ? wrapLines([line.text], TEXT_WIDTH) : 1, line.side.length ? wrapLines(line.side, SIDE_WIDTH) : 1);
+      if (needed > 1) rowHeights[row] = 12.75 * Math.min(4, needed);
+    });
     merges.push(`A${first}:A${last}`);
     // Tageswerte in der untersten Zeile des Tagesblocks (wie „Gesamtstunden“ in der Vorlage)
     if (day.worked) {
@@ -184,7 +208,7 @@ export function weekSheet(rep, sheetName) {
   put(`A${r + 6}`, 'Datum               Unterschrift des Auszubildenden', STYLE.small);
   put(`E${r + 6}`, 'Datum               Unterschrift des Ausbilders', STYLE.small);
 
-  return { name: sheetName, cols: [5, 36, 9, 7, 7.5, 7, 7.5, 3, 16], rowHeights, cells, merges };
+  return { name: sheetName, cols: [5, 36, 4, 7, 7.5, 7, 7.5, 3, 21], rowHeights, cells, merges };
 }
 
 /** Alle Wochen (Montag) im Zeitraum [from, to]. */

@@ -125,7 +125,7 @@ export async function renderSettings(app) {
   const repTo = h('input', { type: 'date', class: 'input', value: addDays(weekStart, 6), 'data-testid': 'report-to' });
   const setRange = (from, to) => { repFrom.value = from; repTo.value = to; };
   const reportSection = section('Ausbildungsnachweis (Excel)',
-    h('p', { class: 'muted small' }, 'Erstellt eine Excel-Datei im Layout des Ausbildungsnachweises: ein Blatt pro Woche mit Arbeitszeit, Pausen und Tätigkeiten (Einzelstunden); je Tag Stunden gesamt (Arbeit + Pause), Pause und Stunden netto; Wochenarbeitszeit = Summe Stunden netto; Abteilung = Kategorie der Tätigkeit.'),
+    h('p', { class: 'muted small' }, 'Erstellt eine Excel-Datei im Layout des Ausbildungsnachweises: ein Blatt pro Woche mit den Tätigkeiten (Einzelstunden); Arbeitszeit und Pause des Tages oben in der Spalte „Ausbildungsabteilung & Tageszeiten“, darunter die Abteilung (= Kategorie der Tätigkeit); je Tag Stunden gesamt (Arbeit + Pause), Pause und Stunden netto; Wochenarbeitszeit = Summe Stunden netto. Druckfertig auf einer A4-Seite. Zum direkten Drucken oder als PDF: Kalender → Woche → „Wochentabelle drucken / als PDF“.'),
     h('div', { class: 'row-2' },
       field('Name', repName),
       field('Ausbildungsbeginn', repStart, 'für Nachweis-Nr. und Ausbildungsjahr')),
