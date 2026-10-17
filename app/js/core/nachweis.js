@@ -1,8 +1,8 @@
 // Ausbildungsnachweis: Wochenblätter im Layout der Vorlage „Ausbildungsnachweise_m_Deckblatt“.
 //
-// Je Tag: die Tätigkeiten mit Einzelstunden; die gebuchten Zeiten („Arbeitszeit 08:45–17:00“ /
-// „Pause 0:30“) stehen in der obersten Zelle der Spalte „Ausbildungsabteilung & Tageszeiten“,
-// darunter je Tätigkeit die Abteilung (= Kategorie). Laufende Tage zählen erst nach Feierabend.
+// Je Tag: die Tätigkeiten mit Einzelstunden. Spalte „Ausbildungsabteilung & Tagesarbeitszeit“: zuerst je
+// Tätigkeit die Abteilung (= Kategorie, in der Zeile der Tätigkeit), direkt darunter je eine Zelle
+// „Arbeitszeit 08:45–17:00“ und „Pause 0:30“ – jede Zelle einzeilig. Laufende Tage zählen erst nach Feierabend.
 // Mo–Fr haben mindestens 5 Zeilen, Samstag 3 (wie in der Vorlage); bei mehr Einträgen wächst der Block.
 // Sonntag erscheint nur, wenn an dem Tag etwas erfasst wurde.
 
@@ -15,9 +15,8 @@ import { DAY_TYPES } from './model.js';
 import { buildXlsx, STYLE } from './xlsx.js';
 
 const MIN_ROWS = [5, 5, 5, 5, 5, 3, 3];
-// Zeichen je Zeile in „Ausgeführte Arbeiten“ (B:C) und „Ausbildungsabteilung & Tageszeiten“ (H:I)
+// Zeichen je Zeile in „Ausgeführte Arbeiten“ (B:C)
 const TEXT_WIDTH = 42;
-const SIDE_WIDTH = 26;
 
 /** Nachweis-Nr. = Woche seit Ausbildungsbeginn (1 = Woche des Beginns). */
 export function reportNumber(weekStart, trainingStart) {
@@ -36,18 +35,20 @@ export function trainingYear(weekStart, trainingStart) {
   return Math.max(0, years) + 1;
 }
 
-/** Gebuchte Tageszeiten als Zeilen: „Arbeitszeit 08:45–17:15“, „Pause 0:30“ (ggf. mit Hinweis). */
+/** Gebuchte Tagesarbeitszeit als einzeilige Zellen: „Arbeitszeit 08:45–17:15“, „Pause 0:30“. */
 function workTimes(day, d, booked) {
   if (!d.sessions.length) return null;
   const ranges = booked.items
     .filter((it) => it.rec.kind === 'work' && it.start != null)
     .sort((a, b) => a.start - b.start)
-    .map((it) => `${fmtTimeRel(it.start, day)}–${it.end != null ? fmtTimeRel(it.end, day) : '…'}`)
-    .join(', ');
+    .map((it) => `${fmtTimeRel(it.start, day)}–${it.end != null ? fmtTimeRel(it.end, day) : '…'}`);
+  // mehrere Arbeitsphasen: je Phase eine Zelle, damit jede Zelle einzeilig bleibt
+  const out = ranges.map((r, i) => (i === 0 ? `Arbeitszeit ${r}` : `und ${r}`));
   let pause = `Pause ${fmtDuration(booked.bookedBreakMin)}`;
-  if (d.status === 'running') pause += ' (läuft noch)';
-  if (d.status === 'incomplete' || d.status === 'conflict') pause += ' (unvollständig – bitte prüfen)';
-  return [`Arbeitszeit ${ranges}`, pause];
+  if (d.status === 'running') pause += ' (läuft)';
+  if (d.status === 'incomplete' || d.status === 'conflict') pause += ' (prüfen)';
+  out.push(pause);
+  return out;
 }
 
 /**
@@ -102,18 +103,20 @@ const hours = (min) => Math.round((min / 60) * 10000) / 10000;
 
 /**
  * Zeilen eines Tagesblocks (für Excel und Druckansicht gleich): je Zeile Tätigkeit, Einzelstunden und
- * rechte Spalte (oberste Zeile: Tageszeiten, darunter Abteilung). Mindestens `minRows` Zeilen.
- * @returns [{ text, info, minutes, side: [Zeilen], sideInfo }]
+ * rechte Spalte – zuerst die Abteilung der Tätigkeit dieser Zeile, direkt nach der letzten Tätigkeit je
+ * eine Zeile Arbeitszeit und Pause. Mindestens `minRows` Zeilen.
+ * @returns [{ text, info, minutes, side: [Text] (höchstens einer), sideInfo }]
  */
 export function dayBlockRows(day) {
-  const n = Math.max(day.minRows, day.lines.length, 1);
+  const k = day.lines.length;
+  const times = day.times || [];
+  const n = Math.max(day.minRows, k + times.length, 1);
   const rows = [];
   for (let i = 0; i < n; i += 1) {
     const line = day.lines[i];
-    const side = [];
-    if (i === 0 && day.times) side.push(...day.times);
-    if (line?.dept) side.push(line.dept);
-    rows.push({ text: line ? line.text : '', info: !!line?.info, minutes: line?.minutes ?? null, side, sideInfo: i === 0 && !!day.times });
+    const time = i >= k ? times[i - k] : null;
+    const side = line?.dept ? [line.dept] : time ? [time] : [];
+    rows.push({ text: line ? line.text : '', info: !!line?.info, minutes: line?.minutes ?? null, side, sideInfo: !!time });
   }
   return rows;
 }
@@ -149,7 +152,7 @@ export function weekSheet(rep, sheetName) {
   put('E7', 'Stunden gesamt', STYLE.header);
   put('F7', 'Pause', STYLE.header);
   put('G7', 'Stunden netto', STYLE.header);
-  put('H7', 'Ausbildungsabteilung & Tageszeiten', STYLE.header);
+  put('H7', 'Ausbildungsabteilung & Tagesarbeitszeit', STYLE.header);
   put('I7', '', STYLE.header);
   merges.push('H7:I7');
 
@@ -169,11 +172,11 @@ export function weekSheet(rep, sheetName) {
       put(`E${row}`, '', STYLE.hours);
       put(`F${row}`, '', STYLE.hours);
       put(`G${row}`, '', STYLE.hours);
-      put(`H${row}`, line.side.join('\n'), line.sideInfo ? STYLE.info : STYLE.text);
+      put(`H${row}`, line.side[0] || '', line.sideInfo ? STYLE.info : STYLE.text);
       put(`I${row}`, '', STYLE.text);
       merges.push(`H${row}:I${row}`);
-      // Zeilenhöhe nach dem längeren Inhalt (Tätigkeit bzw. Tageszeiten), höchstens 4 Zeilen
-      const needed = Math.max(line.text ? wrapLines([line.text], TEXT_WIDTH) : 1, line.side.length ? wrapLines(line.side, SIDE_WIDTH) : 1);
+      // Rechte Spalte ist immer einzeilig; nur sehr lange Tätigkeiten brechen um (höchstens 4 Zeilen)
+      const needed = line.text ? wrapLines([line.text], TEXT_WIDTH) : 1;
       if (needed > 1) rowHeights[row] = 12.75 * Math.min(4, needed);
     });
     merges.push(`A${first}:A${last}`);

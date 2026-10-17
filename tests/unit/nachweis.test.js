@@ -60,7 +60,7 @@ describe('Ausbildungsnachweis', () => {
     assert.equal(trainingYear('2026-08-24', '2026-09-01'), null);
   });
 
-  test('Woche: Tageszeiten getrennt von den Tätigkeiten, Abteilung = Kategorie', () => {
+  test('Woche: Tagesarbeitszeit getrennt von den Tätigkeiten, Abteilung = Kategorie', () => {
     const rep = buildWeekReport({ weekStart: '2026-10-14', ...data(), now: at('2026-10-20', '12:00') });
     assert.equal(rep.weekStart, MON);
     assert.equal(rep.weekEnd, '2026-10-17');
@@ -89,20 +89,18 @@ describe('Ausbildungsnachweis', () => {
     assert.equal(cell('A3').v, 'Ausbildungsnachweis Nr. 7');
     assert.equal(cell('B7').v, 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.');
     assert.deepEqual(['D7', 'E7', 'F7', 'G7', 'H7'].map((r) => cell(r).v),
-      ['Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung & Tageszeiten']);
+      ['Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung & Tagesarbeitszeit']);
     assert.equal(cell('A8').v, 'Montag');
-    // Oberste Zeile: erste Tätigkeit links, Tageszeiten (und Abteilung der Tätigkeit) rechts oben
-    assert.equal(cell('B8').v, 'Löten');
-    assert.equal(cell('D8').v, 4);
-    assert.equal(cell('H8').v, 'Arbeitszeit 08:45–17:15\nPause 0:30\nWerkstatt');
-    assert.ok(sh.rowHeights[8] >= 3 * 12.75, 'Zeile hoch genug für drei Zeilen');
-    assert.equal(cell('B9').v, 'Messen – Oszilloskop <RC> & Co');
-    assert.equal(cell('D9').v, 2.5);
-    assert.equal(cell('H9').v, 'Werkstatt');
-    assert.equal(cell('H10').v, 'Ausbildungsleitung');
-    // Dienstag ohne Tätigkeiten: Zeiten rechts oben, Tätigkeiten-Spalte leer
+    // Rechte Spalte: zuerst die Abteilungen (Zeile der Tätigkeit), darunter Arbeitszeit und Pause je eine Zelle
+    assert.deepEqual(['B8', 'B9', 'B10', 'B11', 'B12'].map((r) => cell(r).v), ['Löten', 'Messen – Oszilloskop <RC> & Co', 'Unterweisung', '', '']);
+    assert.deepEqual(['D8', 'D9', 'D10'].map((r) => cell(r).v), [4, 2.5, 1.5]);
+    assert.deepEqual(['H8', 'H9', 'H10', 'H11', 'H12'].map((r) => cell(r).v), ['Werkstatt', 'Werkstatt', 'Ausbildungsleitung', 'Arbeitszeit 08:45–17:15', 'Pause 0:30']);
+    // jede Zelle einzeilig: keine erhöhten Zeilen im Montagsblock
+    for (const r of [8, 9, 10, 11, 12]) assert.equal(sh.rowHeights[r], undefined, `Zeile ${r}`);
+    // Dienstag ohne Tätigkeiten: Arbeitszeit und Pause oben, Tätigkeiten-Spalte leer
     assert.equal(cell('B13').v, '');
-    assert.equal(cell('H13').v, 'Arbeitszeit 07:30–13:00\nPause 0:00');
+    assert.deepEqual(['H13', 'H14'].map((r) => cell(r).v), ['Arbeitszeit 07:30–13:00', 'Pause 0:00']);
+    assert.ok(!sh.cells.some((c) => String(c.v).includes('\n')), 'keine mehrzeiligen Zellen');
     // keine Zeile „Arbeitszeit …“ mehr in der Tätigkeiten-Spalte
     assert.ok(!sh.cells.some((c) => c.ref.startsWith('B') && String(c.v).startsWith('Arbeitszeit')));
     // Montag (unterste Zeile des Blocks): gebucht 08:45–17:15 = 8,5 h gesamt, 0,5 h Pause, 8 h netto
@@ -135,8 +133,9 @@ describe('Ausbildungsnachweis', () => {
     assert.match(files['xl/workbook.xml'], /<sheet name="KW42" sheetId="1"/);
     assert.match(files['xl/workbook.xml'], /<sheet name="KW43" sheetId="2"/);
     const s1 = files['xl/worksheets/sheet1.xml'];
-    assert.match(s1, /Arbeitszeit 08:45–17:15\nPause 0:30\nWerkstatt/);
-    assert.match(s1, /Ausbildungsabteilung &amp; Tageszeiten/);
+    assert.match(s1, /<c r="H11" s="7" t="inlineStr"><is><t xml:space="preserve">Arbeitszeit 08:45–17:15<\/t>/);
+    assert.match(s1, /<c r="H12" s="7" t="inlineStr"><is><t xml:space="preserve">Pause 0:30<\/t>/);
+    assert.match(s1, /Ausbildungsabteilung &amp; Tagesarbeitszeit/);
     assert.match(s1, /fitToWidth="1"/); // druckbar: eine Seite breit
     assert.match(s1, /Messen – Oszilloskop &lt;RC&gt; &amp; Co/);
     assert.match(s1, /<f>SUM\(G12,G17,G23,G28,G33,G36\)<\/f><v>13.5<\/v>/);

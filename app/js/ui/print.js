@@ -10,7 +10,7 @@ const dec = (min) => (min / 60).toFixed(2).replace('.', ',');
 
 /** Wochentabelle als HTML-Blatt. */
 export function weekPrintSheet(rep) {
-  const head = ['', 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.', 'Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung & Tageszeiten'];
+  const head = ['', 'Ausgeführte Arbeiten, Unterricht, Unterweisungen usw.', 'Einzel-stunden', 'Stunden gesamt', 'Pause', 'Stunden netto', 'Ausbildungsabteilung & Tagesarbeitszeit'];
   const body = rep.days.flatMap((day) => {
     const rows = dayBlockRows(day);
     const lastIdx = rows.length - 1;
@@ -21,7 +21,7 @@ export function weekPrintSheet(rep) {
       h('td', { class: 'ps-num' }, i === lastIdx && day.worked ? dec(day.grossMin) : ''),
       h('td', { class: 'ps-num' }, i === lastIdx && day.worked ? dec(day.breakMin) : ''),
       h('td', { class: 'ps-num ps-strong' }, i === lastIdx ? dec(day.netMin) : ''),
-      h('td', { class: r.sideInfo ? 'ps-side ps-info' : 'ps-side' }, r.side.map((t, k) => [k ? h('br') : null, t]))));
+      h('td', { class: r.sideInfo ? 'ps-side ps-info' : 'ps-side' }, r.side[0] || '')));
   });
   return h('div', { class: 'print-sheet', 'data-testid': 'print-sheet' },
     h('div', { class: 'ps-name' }, `Name: ${rep.name || '______________________________'}`),

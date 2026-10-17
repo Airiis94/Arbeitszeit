@@ -31,8 +31,8 @@ JSON-Datei, die du selbst verwahrst.
   plus Anfangssaldo und Korrekturen. Keine Sollzeit – kürzere Tage erzeugen kein Minus.
 - **Ausbildungsnachweis als Excel-Datei** (.xlsx) im Layout der Vorlage
   „Ausbildungsnachweise_m_Deckblatt“: ein Blatt pro Woche, je Tag die Tätigkeiten mit Einzelstunden;
-  die gebuchten Tageszeiten („Arbeitszeit 08:45–17:00“ / „Pause 0:30“) stehen in der obersten Zelle der
-  Spalte „Ausbildungsabteilung & Tageszeiten“, darunter je Tätigkeit die Abteilung (= Kategorie). Je Tag
+  in der Spalte „Ausbildungsabteilung & Tagesarbeitszeit“ zuerst je Tätigkeit die Abteilung (= Kategorie),
+  direkt darunter je eine einzeilige Zelle „Arbeitszeit 08:45–17:00“ und „Pause 0:30“. Je Tag
   Stunden gesamt (Arbeit + Pause), Pause und Stunden netto, Wochenarbeitszeit = Summe Stunden netto,
   Nachweis-Nr. und Ausbildungsjahr aus dem Ausbildungsbeginn. Druckfertig auf einer A4-Seite (Breite).
   Erzeugt auf dem Gerät, ohne Server.
