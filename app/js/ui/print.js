@@ -16,7 +16,8 @@ export function weekPrintSheet(rep) {
     const lastIdx = rows.length - 1;
     return rows.map((r, i) => h('tr', { class: i === 0 ? 'ps-first' : null },
       i === 0 ? h('th', { rowspan: rows.length, class: 'ps-day', scope: 'rowgroup' }, h('span', null, day.label)) : null,
-      i === 0 ? h('td', { rowspan: rows.length, class: 'ps-times', 'data-testid': 'print-times' }, day.times ? h('span', null, day.times.join('\n')) : null) : null,
+      i === 0 ? h('td', { rowspan: rows.length, class: rows.length < 5 || (day.times?.length || 0) > 2 ? 'ps-times ps-times-small' : 'ps-times', 'data-testid': 'print-times' },
+        day.times ? h('span', null, day.times.join('\n')) : null) : null,
       h('td', { class: r.info ? 'ps-text ps-info' : 'ps-text' }, r.text),
       h('td', { class: 'ps-num' }, r.minutes != null ? dec(r.minutes) : ''),
       h('td', { class: 'ps-num' }, i === lastIdx && day.worked ? dec(day.grossMin) : ''),

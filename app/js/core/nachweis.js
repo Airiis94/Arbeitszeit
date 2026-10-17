@@ -156,10 +156,12 @@ export function weekSheet(rep, sheetName) {
     const rows = dayBlockRows(day);
     const first = r;
     const last = r + rows.length - 1;
+    // Tagesarbeitszeit füllt die schmale Spalte (9 pt); nur kurze Blöcke bzw. mehr als zwei Zeilen kleiner
+    const timesStyle = rows.length < 5 || (day.times?.length || 0) > 2 ? STYLE.dayTimesSmall : STYLE.dayTimes;
     rows.forEach((line, i) => {
       const row = r + i;
       put(`A${row}`, i === 0 ? day.label : '', STYLE.dayLabel);
-      put(`B${row}`, i === 0 && day.times ? day.times.join('\n') : '', STYLE.dayTimes);
+      put(`B${row}`, i === 0 && day.times ? day.times.join('\n') : '', timesStyle);
       put(`C${row}`, line.text, line.info ? STYLE.info : STYLE.text);
       put(`D${row}`, '', STYLE.text);
       merges.push(`C${row}:D${row}`);

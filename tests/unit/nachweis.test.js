@@ -96,6 +96,10 @@ describe('Ausbildungsnachweis', () => {
     // Tagesarbeitszeit senkrecht neben dem Wochentag, über den ganzen Tagesblock verbunden
     assert.equal(cell('B8').v, '08:45–17:15\nPause 0:30');
     assert.equal(cell('B8').style, STYLE.dayTimes);
+    // kurzer Block (Samstag, 3 Zeilen) bzw. mehr als zwei Zeilen: kleinere Schrift, damit nichts abgeschnitten wird
+    const sat = buildWeekReport({ weekStart: MON, ...data(), intervals: [work('2026-10-17', '08:00', '12:00')], now: at('2026-10-20', '12:00') });
+    const satSheet = weekSheet(sat, 'KW42');
+    assert.equal(satSheet.cells.find((c) => c.ref === 'B34').style, STYLE.dayTimesSmall);
     assert.ok(sh.merges.includes('B8:B12'));
     assert.deepEqual(['C8', 'C9', 'C10', 'C11', 'C12'].map((r) => cell(r).v), ['Löten', 'Messen – Oszilloskop <RC> & Co', 'Unterweisung', '', '']);
     assert.deepEqual(['E8', 'E9', 'E10'].map((r) => cell(r).v), [4, 2.5, 1.5]);
@@ -134,8 +138,9 @@ describe('Ausbildungsnachweis', () => {
     assert.match(files['xl/workbook.xml'], /<sheet name="KW42" sheetId="1"/);
     assert.match(files['xl/workbook.xml'], /<sheet name="KW43" sheetId="2"/);
     // senkrechte, kleine Schrift für die Tagesarbeitszeit
-    assert.match(files['xl/styles.xml'], /<cellXfs count="15">/);
-    assert.match(files['xl/styles.xml'], /fontId="5"[^>]*><alignment horizontal="center" vertical="center" textRotation="90" wrapText="1"\/>/);
+    assert.match(files['xl/styles.xml'], /<cellXfs count="16">/);
+    assert.match(files['xl/styles.xml'], /<font><sz val="9"\/><name val="Arial"\/><\/font>/); // füllt die schmale Spalte
+    assert.match(files['xl/styles.xml'], /fontId="6"[^>]*><alignment horizontal="center" vertical="center" textRotation="90" wrapText="1"\/>/);
     const s1 = files['xl/worksheets/sheet1.xml'];
     assert.match(s1, /<c r="B8" s="14" t="inlineStr"><is><t xml:space="preserve">08:45–17:15\nPause 0:30<\/t>/);
     assert.match(s1, /<mergeCell ref="B8:B12"\/>/);
