@@ -146,25 +146,56 @@ export function fmtDuration(min, { sign = false } = {}) {
   return sign && abs > 0 ? `+${s}` : s;
 }
 
+// Einheiten: Stunden (h, Std., Stunde, Stunden) und Minuten (m, min, Min., Minute, Minuten)
+const H = '(?:h|std\\.?|stunden?)';
+const M = '(?:m|min\\.?|minuten?)';
+const DEC = '(\\d+(?:[.,]\\d+)?|[.,]\\d+)';
+const RE_HMM = /^(\d{1,4}):([0-5]\d)(?:h|std\.?|stunden?)?$/;
+const RE_H_M = new RegExp(`^(\\d+)${H}(\\d{1,2})(?:${M})?$`);
+const RE_HOURS = new RegExp(`^${DEC}${H}$`);
+const RE_MINUTES = new RegExp(`^(\\d+)${M}$`);
+const RE_DECIMAL = /^(\d+[.,]\d+|[.,]\d+)$/;
+const RE_INT = /^(\d+)$/;
+
 /**
- * Akzeptiert "90", "1:30", "1,5h", "1.5 h", "45 min", "2h". Liefert Minuten oder null.
- * Ein reines "1,5" ohne Einheit wird als Stunden gelesen, ganze Zahlen als Minuten.
+ * Liest eine Dauer und erklärt, wie sie verstanden wurde.
+ * Eindeutig sind: „1:30“ (Std:Min), „1,5“ / „0,5“ (Kommazahl = Stunden), Angaben mit Einheit
+ * („1,5 h“, „2 Std.“, „30 min“, „1 h 30“) und ganze Zahlen ab 10 („30“, „90“ = Minuten).
+ * Eine einzelne Ziffer 1–9 ohne Einheit ist mehrdeutig (1 Stunde oder 1 Minute?) und wird nicht geraten.
+ * @returns {{ min: number|null, ambiguous: boolean }}
  */
-export function parseDuration(input) {
-  if (input == null) return null;
+export function analyzeDuration(input) {
+  if (input == null) return { min: null, ambiguous: false };
   let s = String(input).trim().toLowerCase().replace(/\s+/g, '');
-  if (!s) return null;
+  if (!s) return { min: null, ambiguous: false };
   let neg = false;
   if (s.startsWith('-') || s.startsWith('−')) { neg = true; s = s.slice(1); }
   else if (s.startsWith('+')) s = s.slice(1);
+  const hours = (x) => Math.round(parseFloat(x.replace(',', '.')) * 60);
   let min = null;
   let m;
-  if ((m = /^(\d{1,4}):([0-5]\d)$/.exec(s))) min = +m[1] * 60 + +m[2];
-  else if ((m = /^(\d+)(min|m)?$/.exec(s))) min = +m[1];
-  else if ((m = /^(\d+(?:[.,]\d+)?)(h|std)?$/.exec(s))) min = Math.round(parseFloat(m[1].replace(',', '.')) * 60);
-  else if ((m = /^(\d+)h(\d+)(min|m)?$/.exec(s))) min = +m[1] * 60 + +m[2];
-  if (min == null || !Number.isFinite(min)) return null;
-  return neg ? -min : min;
+  if ((m = RE_HMM.exec(s))) min = +m[1] * 60 + +m[2];
+  else if ((m = RE_H_M.exec(s))) min = +m[1] * 60 + +m[2];
+  else if ((m = RE_HOURS.exec(s))) min = hours(m[1]);
+  else if ((m = RE_MINUTES.exec(s))) min = +m[1];
+  else if ((m = RE_DECIMAL.exec(s))) min = hours(m[1]);
+  else if ((m = RE_INT.exec(s))) {
+    const n = +m[1];
+    if (n >= 1 && n <= 9) return { min: null, ambiguous: true };
+    min = n;
+  }
+  if (min == null || !Number.isFinite(min)) return { min: null, ambiguous: false };
+  return { min: neg ? -min : min, ambiguous: false };
+}
+
+/** Dauer in Minuten oder null (ungültig bzw. mehrdeutig, siehe analyzeDuration). */
+export function parseDuration(input) {
+  return analyzeDuration(input).min;
+}
+
+/** Dauer in Dezimalstunden mit Komma, z. B. 30 → „0,50“ (wie im Ausbildungsnachweis). */
+export function fmtHoursDecimal(min) {
+  return (min / 60).toFixed(2).replace('.', ',');
 }
 
 export function fmtDate(key, { weekday = true, year = true } = {}) {

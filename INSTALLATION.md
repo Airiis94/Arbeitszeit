@@ -51,6 +51,11 @@ gestempelten Zeiten bleiben dabei erhalten; zurückschalten ist jederzeit mögli
 
 **Tätigkeiten:** Die Tätigkeiten eines Tages sollen zusammen genau die gebuchte Netto-Arbeitszeit
 ergeben. Die App zeigt, wie viel noch zuzuordnen ist, und schlägt den Rest als Dauer vor.
+**Dauer eingeben:** „0,5“, „0,5 Std.“, „30“, „30 min“ und „0:30“ bedeuten alle 30 Minuten. Unter dem Feld
+steht, wie die Eingabe verstanden wird. Eine einzelne Ziffer ohne Einheit (z. B. „1“) ist nicht eindeutig –
+dann „1 Std.“ oder „1 min“ antippen. Frühere Tage lassen sich jederzeit nachtragen: **Tätigkeiten** →
+„Anderen Tag wählen“ oder ein Tag aus **„Noch offene Tage“**.
+
 Am schnellsten geht es direkt unter **Heute**: Tätigkeit eintippen, auf die **Uhr** tippen, Dauer wählen
 (oder „Rest“) und „Hinzufügen“. Rechts daneben steht, wie viel Zeit des Tages noch zu vergeben ist.
 Wiederkehrende Tätigkeiten müssen nicht neu eingegeben werden: Beim Erfassen stehen oben alle bisher

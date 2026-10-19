@@ -776,3 +776,19 @@ textarea.input { min-height: 80px; resize: vertical; }
   .print-sheet { width: auto !important; zoom: 1 !important; padding: 0; }
   .ps-table tr { break-inside: avoid; }
 }
+
+/* Dauer-Eingabe: Anzeige, wie die Eingabe verstanden wird */
+.dur-preview { font-size: 0.82rem; color: var(--muted); min-height: 1.2em; font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.dur-ask { color: var(--text); font-weight: 700; }
+.dur-bad { color: var(--neg); }
+.chip-small { min-height: 34px; min-width: 0; padding: 2px 10px; font-size: 0.85rem; }
+
+/* Tätigkeiten: Tag wählen, offene Tage, Einheiten-Hinweis */
+.day-jump { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem; color: var(--muted); margin: 0 0 8px; }
+.day-jump .input { min-height: 40px; padding: 6px 10px; width: auto; }
+.open-days { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.open-days a { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; text-decoration: none; color: var(--text); font-variant-numeric: tabular-nums; }
+.od-open { color: var(--break); font-weight: 700; }
+.od-over { color: var(--neg); font-weight: 700; }
+.act-unit-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; padding: 6px 8px; border-radius: 8px; background: var(--warn-bg); font-size: 0.82rem; }
+.act-dec { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }

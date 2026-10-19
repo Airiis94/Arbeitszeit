@@ -302,6 +302,73 @@ test('Startseite: Tätigkeit mit Dauer per Uhr-Knopf erfassen, offene Zeit wird 
   await page.waitForSelector('dialog .dialog-error:not([hidden])');
 });
 
+test('Tätigkeiten Wochen später ergänzen: 0,5 = 30 min, „1“ wird nachgefragt, Summen stimmen', async () => {
+  await workday(); // Mo 02.03.: gebucht 08:00–16:45, Pause 0:30 → 8:15 netto
+  // Alter Eintrag aus der früheren Eingabelogik: „1“ wurde als 1 Minute gespeichert
+  await page.evaluate(async () => {
+    await window.__app.repo.saveActivity({ day: '2026-03-02', title: 'Altlast', minutes: 1, intensity: null, category: null, description: '' });
+  });
+  // drei Wochen später
+  await setTime(t('2026-03-23', '10:00'));
+  await page.goto(`${base}#/taetigkeiten/2026-03-23`);
+  await page.waitForSelector('[data-testid=open-days]');
+  assert.match(await text('open-days'), /02\.03\.\s*noch 8:14 offen/);
+  await page.click('[data-testid=open-days] a');
+  await page.waitForFunction(() => location.hash === '#/taetigkeiten/2026-03-02');
+  await page.waitForSelector('[data-testid=unit-warning]');
+  // Reparatur des alten Eintrags: 1 min → 1 Std.
+  await page.click('[data-testid=unit-warning] button');
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('Noch 7:15'));
+  assert.equal(await page.$('[data-testid=unit-warning]'), null);
+
+  const add = async (title, duration) => {
+    await click('add-activity');
+    await page.fill('dialog input[name=title]', title);
+    await page.fill('dialog input[name=duration]', duration);
+  };
+  // „1“ ohne Einheit: nicht eindeutig → Nachfrage statt still 1 Minute
+  await add('Löten', '1');
+  assert.match(await page.textContent('dialog [data-testid=duration-preview]'), /Gemeint: 1 Std\. oder 1 min/);
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog .dialog-error:not([hidden])');
+  assert.match(await page.textContent('dialog .dialog-error'), /„1“ ist nicht eindeutig/);
+  await page.click('dialog [data-testid=duration-preview] button:has-text("1 Std.")');
+  assert.equal(await page.inputValue('dialog input[name=duration]'), '1:00');
+  assert.equal(await page.textContent('dialog [data-testid=duration-preview]'), '= 1:00 Std. · 60 min · 1,00 Std.');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  // 0,5 und 30 min sind dasselbe
+  await add('Messen', '0,5');
+  assert.equal(await page.textContent('dialog [data-testid=duration-preview]'), '= 0:30 Std. · 30 min · 0,50 Std.');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await add('Aufräumen', '30 min');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-sum]')?.textContent === '3:00');
+  assert.match(await text('activity-check'), /Noch 5:15 Tätigkeiten zuordnen/);
+  // Rest per Vorschlag auffüllen → passt genau
+  await click('add-activity');
+  await page.fill('dialog input[name=title]', 'Werkstatt');
+  assert.equal(await page.inputValue('dialog input[name=duration]'), '5:15');
+  await page.click('dialog button[type=submit]');
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('entsprechen genau'));
+  // Nachweis (Einzelstunden) rechnet mit denselben Minuten
+  const lines = await page.evaluate(async () => {
+    const { buildWeekReport } = await import('./js/core/nachweis.js');
+    const d = await window.__app.repo.loadAll();
+    const rep = buildWeekReport({ weekStart: '2026-03-02', ...d, now: Date.now() });
+    return { mins: rep.days[0].lines.map((l) => l.minutes), net: rep.days[0].netMin };
+  });
+  assert.deepEqual(lines.mins.sort((a, b) => a - b), [30, 30, 60, 60, 315]);
+  assert.equal(lines.mins.reduce((a, b) => a + b, 0), lines.net);
+  // Tag per Datumsauswahl wählen; der ergänzte Tag ist nicht mehr offen
+  await page.fill('[data-testid=activity-day]', '2026-03-23');
+  await page.waitForFunction(() => location.hash === '#/taetigkeiten/2026-03-23');
+  await page.waitForTimeout(150);
+  assert.equal(await page.$('[data-testid=open-days]'), null);
+});
+
 test('Korrektur mit Begründung verändert den Saldo', async () => {
   await workday();
   await page.goto(`${base}#/konto`);

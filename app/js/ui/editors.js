@@ -2,7 +2,7 @@
 
 import { h, field, formDialog, toast } from './dom.js';
 import {
-  localTimestamp, timeOfDay, dayKey, parseDuration, fmtDuration, fmtDate, parseTime, todayKey, isValidDayKey,
+  localTimestamp, timeOfDay, dayKey, parseDuration, analyzeDuration, fmtHoursDecimal, fmtDuration, fmtDate, parseTime, todayKey, isValidDayKey,
 } from '../core/time.js';
 import { newInterval, touch, DAY_TYPES, INTENSITIES } from '../core/model.js';
 import { stampChoices } from '../core/booking.js';
@@ -10,6 +10,64 @@ import { activityTemplates, filterTemplates, templateMinutes, hideTemplate } fro
 import { ValidationError } from '../db/repo.js';
 
 const err = (msg) => new ValidationError([msg]);
+
+/** Verständliche Fehlermeldung für eine nicht lesbare oder mehrdeutige Dauer. */
+export function durationError(input, example = '30 min, 0,5 Std. oder 1:30') {
+  const raw = String(input ?? '').trim();
+  if (analyzeDuration(raw).ambiguous) {
+    const n = raw.replace(/^[+−-]/, '');
+    return err(`„${raw}“ ist nicht eindeutig – bitte „${n} Std.“ oder „${n} min“ eingeben.`);
+  }
+  return err(`Bitte eine gültige Dauer angeben (z. B. ${example}).`);
+}
+
+/**
+ * Eingabefeld für Dauern mit Live-Anzeige, wie die Eingabe verstanden wird
+ * („= 0:30 Std. · 30 min · 0,50 Std.“). Bei einer einzelnen Ziffer ohne Einheit wird nachgefragt.
+ * Wird der Wert per Skript gesetzt, danach `input` auslösen (setDuration).
+ */
+function durationInput(attrs, { signed = false } = {}) {
+  const input = h('input', { type: 'text', class: 'input', inputmode: signed ? 'text' : 'decimal', autocomplete: 'off', ...attrs });
+  const preview = h('div', { class: 'dur-preview', 'aria-live': 'polite', 'data-testid': 'duration-preview' });
+  const pick = (label, value) => h('button', { type: 'button', class: 'chip chip-small', onclick: () => setDuration(input, value) }, label);
+  const update = () => {
+    const raw = input.value.trim();
+    preview.className = 'dur-preview';
+    preview.replaceChildren();
+    if (!raw) return;
+    const { min, ambiguous } = analyzeDuration(raw);
+    if (ambiguous) {
+      const sign = /^[+−-]/.test(raw) ? raw[0].replace('−', '-') : '';
+      const n = raw.replace(/^[+−-]/, '');
+      preview.classList.add('dur-ask');
+      preview.append('Gemeint: ', pick(`${n} Std.`, `${sign}${n}:00`), ' oder ', pick(`${n} min`, `${sign}${n} min`), ' ?');
+    } else if (min == null) {
+      preview.classList.add('dur-bad');
+      preview.append('Nicht erkannt – z. B. 30 min, 0,5 Std. oder 1:30');
+    } else {
+      const abs = Math.abs(min);
+      const sg = min < 0 ? '−' : signed && min > 0 ? '+' : '';
+      preview.append(`= ${sg}${fmtDuration(abs)} Std. · ${sg}${abs} min · ${sg}${fmtHoursDecimal(abs)} Std.`);
+    }
+  };
+  input.addEventListener('input', update);
+  update();
+  return { input, preview };
+}
+
+/** Wert eines Dauerfeldes setzen und die Anzeige aktualisieren. */
+function setDuration(input, value) {
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** Formularfeld „Dauer“ mit Live-Anzeige. */
+function durationField(label, attrs, hint, opts) {
+  const { input, preview } = durationInput(attrs, opts);
+  const f = field(label, input, hint);
+  f.appendChild(preview);
+  return { field: f, input };
+}
 
 function timeInput(name, value, attrs = {}) {
   return h('input', { type: 'time', name, value: value || '', step: 60, required: attrs.required, class: 'input' });
@@ -95,11 +153,11 @@ export function editBreakDialog(app, day, rec = null, sessions = []) {
   return formDialog({
     title: isNew ? `Pause eintragen – ${fmtDate(day)}` : `Pause bearbeiten – ${fmtDate(day)}`,
     build: () => {
-      const dur = h('input', { name: 'duration', type: 'text', inputmode: 'numeric', class: 'input', value: rec?.durationMin ? String(rec.durationMin) : '', placeholder: 'Minuten, z. B. 30 oder 1:15' });
+      const durF = durationField('Dauer', { name: 'duration', value: rec?.durationMin ? fmtDuration(rec.durationMin) : '', placeholder: 'z. B. 30 min, 0:45 oder 1:15' });
       const chips = h('div', { class: 'chips' }, PRESETS.map((m) => h('button', {
-        type: 'button', class: 'chip', onclick: () => { dur.value = String(m); },
+        type: 'button', class: 'chip', onclick: () => setDuration(durF.input, `${m} min`),
       }, `${m} min`)));
-      const durBox = h('div', null, chips, field('Dauer', dur));
+      const durBox = h('div', null, chips, durF.field);
       const startT = timeInput('start', rec?.start ? timeOfDay(rec.start) : '');
       const endT = timeInput('end', rec?.end ? timeOfDay(rec.end) : '');
       const timesBox = h('div', { class: 'row-2' }, field('Beginn', startT), field('Ende', endT, 'leer = läuft noch'));
@@ -121,7 +179,7 @@ export function editBreakDialog(app, day, rec = null, sessions = []) {
       let fields;
       if (f.get('mode') === 'duration') {
         const min = parseDuration(f.get('duration'));
-        if (!min || min <= 0) throw err('Bitte eine gültige Dauer angeben (z. B. 30 oder 1:15).');
+        if (!min || min <= 0) throw durationError(f.get('duration'), '30 min, 0:45 oder 1:15');
         fields = { start: null, end: null, durationMin: min };
       } else {
         const s = f.get('start');
@@ -267,7 +325,7 @@ function memoryPicker(app, form, memory, suggestMin) {
   const apply = (t) => {
     const el = form.elements;
     el.title.value = t.title;
-    el.duration.value = fmtDuration(templateMinutes(t, suggestMin));
+    setDuration(el.duration, fmtDuration(templateMinutes(t, suggestMin)));
     el.intensity.value = t.intensity || '';
     el.category.value = t.category || '';
     el.description.value = t.description || '';
@@ -317,11 +375,11 @@ export function quickActivityDialog(app, day, title = '', { openMin = 0, templat
     title: `Tätigkeit hinzufügen – ${fmtDate(day, { year: false })}`,
     submitText: 'Hinzufügen',
     build: () => {
-      const dur = h('input', { name: 'duration', type: 'text', class: 'input', inputmode: 'decimal', value: initial ? fmtDuration(initial) : '', placeholder: 'z. B. 90, 1:30 oder 1,5h', 'data-testid': 'quick-duration' });
-      const set = (m) => () => { dur.value = fmtDuration(m); };
+      const durF = durationField('Dauer', { name: 'duration', value: initial ? fmtDuration(initial) : '', placeholder: 'z. B. 30 min, 0,5 Std. oder 1:30', 'data-testid': 'quick-duration' }, hint);
+      const set = (m) => () => setDuration(durF.input, fmtDuration(m));
       return [
         field('Tätigkeit', h('input', { name: 'title', type: 'text', class: 'input', required: true, maxlength: 120, value: title, 'data-nofocus': title ? true : null })),
-        field('Dauer', dur, hint),
+        durF.field,
         h('div', { class: 'chips dur-chips', 'data-testid': 'duration-chips' },
           openMin > 0 ? h('button', { type: 'button', class: 'chip chip-rest', onclick: set(openMin) }, `Rest ${fmtDuration(openMin)}`) : null,
           [15, 30, 45, 60, 90, 120, 180, 240, 300, 360].map((m) => h('button', { type: 'button', class: 'chip', onclick: set(m) }, fmtDuration(m)))),
@@ -332,7 +390,7 @@ export function quickActivityDialog(app, day, title = '', { openMin = 0, templat
       const name = String(f.get('title') || '').trim();
       if (!name) throw err('Bitte eine Tätigkeit eingeben.');
       const minutes = parseDuration(f.get('duration'));
-      if (!minutes || minutes <= 0) throw err('Bitte eine Dauer wählen oder eingeben (z. B. 90, 1:30 oder 1,5h).');
+      if (!minutes || minutes <= 0) throw durationError(f.get('duration'));
       const known = findTemplate(name);
       const res = await app.repo.saveActivity({
         day,
@@ -356,7 +414,7 @@ export function editActivityDialog(app, day, rec = null, categories = [], sugges
     build: (form) => [
       !rec && memory ? memoryPicker(app, form, memory, suggestMin) : null,
       field('Bezeichnung', h('input', { name: 'title', type: 'text', class: 'input', required: true, maxlength: 120, value: rec?.title || '', placeholder: !rec && memory ? 'Tippen zum Suchen' : '' })),
-      field('Dauer', h('input', { name: 'duration', type: 'text', class: 'input', inputmode: 'decimal', value: rec ? fmtDuration(rec.minutes) : suggestMin ? fmtDuration(suggestMin) : '', placeholder: 'z. B. 90, 1:30 oder 1,5h' }), suggestMin && !rec ? `Vorschlag: der noch nicht zugeordnete Rest (${fmtDuration(suggestMin)})` : null),
+      durationField('Dauer', { name: 'duration', value: rec ? fmtDuration(rec.minutes) : suggestMin ? fmtDuration(suggestMin) : '', placeholder: 'z. B. 30 min, 0,5 Std. oder 1:30' }, suggestMin && !rec ? `Vorschlag: der noch nicht zugeordnete Rest (${fmtDuration(suggestMin)})` : null).field,
       h('div', { class: 'row-2' },
         field('Intensität', h('select', { name: 'intensity', class: 'input' },
           h('option', { value: '' }, '—'),
@@ -368,7 +426,7 @@ export function editActivityDialog(app, day, rec = null, categories = [], sugges
     onSubmit: async (form) => {
       const f = new FormData(form);
       const minutes = parseDuration(f.get('duration'));
-      if (!minutes || minutes <= 0) throw err('Bitte eine gültige Dauer angeben (z. B. 90, 1:30 oder 1,5h).');
+      if (!minutes || minutes <= 0) throw durationError(f.get('duration'));
       const res = await app.repo.saveActivity({
         ...(rec ? { id: rec.id } : {}),
         day,
@@ -392,13 +450,13 @@ export function editCorrectionDialog(app) {
       h('p', { class: 'muted' }, 'Eine Korrektur verändert den Saldo direkt (ohne Rundung) und wird mit Begründung protokolliert.'),
       h('div', { class: 'row-2' },
         field('Datum', h('input', { name: 'day', type: 'date', class: 'input', value: todayKey(), required: true })),
-        field('Minuten (+/−)', h('input', { name: 'minutes', type: 'text', class: 'input', inputmode: 'text', placeholder: 'z. B. +1:30 oder -45', required: true }))),
+        durationField('Zeit (+/−)', { name: 'minutes', placeholder: 'z. B. +1:30 oder -45 min', required: true }, null, { signed: true }).field),
       field('Begründung', h('input', { name: 'reason', type: 'text', class: 'input', required: true, maxlength: 300, placeholder: 'z. B. Überstunden ausgezahlt' })),
     ],
     onSubmit: async (form) => {
       const f = new FormData(form);
       const minutes = parseDuration(f.get('minutes'));
-      if (!minutes) throw err('Bitte Minuten angeben, z. B. +1:30 oder -45.');
+      if (!minutes) throw durationError(f.get('minutes'), '+1:30 oder -45 min');
       if (!isValidDayKey(f.get('day'))) throw err('Bitte ein gültiges Datum angeben.');
       await app.repo.saveCorrection({ day: f.get('day'), minutes, reason: f.get('reason') || '' });
       toast('Korrektur gespeichert.', { type: 'success' });

@@ -158,7 +158,7 @@ export async function renderSettings(app) {
           const start = f.get('accountStart');
           if (!isValidDayKey(start)) throw err('Ungültiger Kontobeginn.');
           const bal = parseDuration(f.get('startBalance') || '0');
-          if (bal == null) throw err('Ungültiger Anfangssaldo (z. B. +12:30 oder -3:15).');
+          if (bal == null) throw err('Ungültiger Anfangssaldo (z. B. +12:30, -3:15 oder +45 min).');
           const interval = Number(f.get('interval'));
           if (!GRID_OPTIONS.includes(interval)) throw err('Ungültiges Buchungsraster.');
           const next = {

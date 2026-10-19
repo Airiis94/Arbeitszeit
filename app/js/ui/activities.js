@@ -1,8 +1,8 @@
 // Tätigkeitsprotokoll eines Tages.
 
 import { h, confirmDialog } from './dom.js';
-import { dayRow, activityCheck } from '../core/calc.js';
-import { fmtDuration, fmtDate, addDays, todayKey, isValidDayKey } from '../core/time.js';
+import { dayRow, activityCheck, computeAccount } from '../core/calc.js';
+import { fmtDuration, fmtHoursDecimal, fmtDate, addDays, todayKey, isValidDayKey } from '../core/time.js';
 import { editActivityDialog, undoToast } from './editors.js';
 
 export async function renderActivities(app, params) {
@@ -15,6 +15,25 @@ export async function renderActivities(app, params) {
   const chk = activityCheck(row, data.activities);
   const sum = chk.sum;
   const suggest = chk.gap > 0 ? chk.gap : null;
+
+  // Tage (letzte 12 Wochen), an denen die Tätigkeiten noch nicht zur Netto-Arbeitszeit passen –
+  // zum späteren Ergänzen; jede Zeile rechnet aus den gespeicherten Daten neu.
+  const today = todayKey();
+  const acc = computeAccount({ ...data, today, now: Date.now() });
+  const from = addDays(today, -84);
+  const openDays = acc.rows
+    .filter((r) => r.day >= from && r.day !== day && r.bookedNetMin != null && r.bookedNetMin > 0)
+    .map((r) => ({ day: r.day, chk: activityCheck(r, data.activities) }))
+    .filter((x) => x.chk.gap !== 0)
+    .sort((a, b) => b.day.localeCompare(a.day));
+
+  // Sehr kurze Einträge (1–9 min) stammen meist aus einer früheren Eingabe wie „1“ (gemeint: 1 Stunde)
+  const fixUnit = async (a) => {
+    try {
+      const res = await app.repo.saveActivity({ ...a, minutes: a.minutes * 60 });
+      undoToast(app, `„${a.title}“: ${fmtDuration(a.minutes)} → ${fmtDuration(a.minutes * 60)} Std. geändert.`, res.changes);
+    } catch (e) { app.error(e); }
+  };
 
   const remove = async (a) => {
     if (!(await confirmDialog({ title: 'Tätigkeit löschen?', message: `„${a.title}“ (${fmtDuration(a.minutes)}) wird gelöscht.`, confirmText: 'Löschen', danger: true }))) return;
@@ -47,6 +66,11 @@ export async function renderActivities(app, params) {
       h('a', { class: 'btn btn-small', href: `#/taetigkeiten/${addDays(day, -1)}`, 'aria-label': 'Vortag' }, '‹'),
       h('h1', { class: 'nav-title' }, fmtDate(day)),
       h('a', { class: 'btn btn-small', href: `#/taetigkeiten/${addDays(day, 1)}`, 'aria-label': 'Folgetag' }, '›')),
+    h('label', { class: 'day-jump' }, 'Anderen Tag wählen: ',
+      h('input', {
+        type: 'date', class: 'input input-short', value: day, max: today, 'data-testid': 'activity-day',
+        onchange: (ev) => { if (isValidDayKey(ev.target.value)) app.navigate(`#/taetigkeiten/${ev.target.value}`); },
+      })),
     status,
     h('button', { type: 'button', class: 'btn btn-primary btn-block', 'data-testid': 'add-activity', onclick: () => editActivityDialog(app, day, null, categories, suggest, { activities: data.activities, settings: data.settings }) }, '+ Tätigkeit erfassen'),
     acts.length ? h('div', { class: 'card' },
@@ -54,12 +78,16 @@ export async function renderActivities(app, params) {
       h('ul', { class: 'act-list' }, acts.map((a) => h('li', { class: 'act-item' },
         h('div', { class: 'act-body' },
           h('div', { class: 'act-title' }, a.title),
+          a.minutes >= 1 && a.minutes <= 9 ? h('div', { class: 'act-unit-warn', 'data-testid': 'unit-warning' },
+            `Nur ${a.minutes} min erfasst – gemeint ${a.minutes} Std.? `,
+            h('button', { type: 'button', class: 'chip chip-small', onclick: () => fixUnit(a) }, `Auf ${fmtDuration(a.minutes * 60)} Std. ändern`)) : null,
           a.category || a.intensity ? h('div', { class: 'act-meta' },
             a.category ? h('span', { class: 'badge badge-soft' }, a.category) : null,
             a.intensity ? h('span', { class: `badge int-${a.intensity}` }, `Intensität ${a.intensity}`) : null) : null,
           a.description ? h('div', { class: 'act-desc' }, a.description) : null),
         h('div', { class: 'act-side' },
           h('span', { class: 'act-dur' }, fmtDuration(a.minutes)),
+          h('span', { class: 'act-dec' }, `${fmtHoursDecimal(a.minutes)} Std.`),
           h('div', { class: 'act-actions' },
             h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Bearbeiten', onclick: () => editActivityDialog(app, day, a, categories) }, '✎'),
             h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Löschen', onclick: () => remove(a) }, '🗑')))))),
@@ -67,5 +95,12 @@ export async function renderActivities(app, params) {
         h('span', null, 'Summe'),
         h('span', null, h('b', { 'data-testid': 'activity-sum' }, fmtDuration(sum)), h('span', { class: 'muted' }, ` von ${fmtDuration(chk.target)} netto`))))
       : h('p', { class: 'muted' }, 'Für diesen Tag sind noch keine Tätigkeiten dokumentiert.'),
+    openDays.length ? h('div', { class: 'card', 'data-testid': 'open-days' },
+      h('div', { class: 'card-head' }, h('h2', null, `Noch offene Tage (${openDays.length})`)),
+      h('p', { class: 'muted small' }, 'Tage der letzten 12 Wochen, an denen die Tätigkeiten noch nicht der Netto-Arbeitszeit entsprechen. Antippen zum Ergänzen.'),
+      h('ul', { class: 'open-days' }, openDays.slice(0, 20).map(({ day: d, chk: c }) => h('li', null,
+        h('a', { href: `#/taetigkeiten/${d}` },
+          h('span', null, fmtDate(d, { year: false })),
+          h('span', { class: c.gap > 0 ? 'od-open' : 'od-over' }, c.gap > 0 ? `noch ${fmtDuration(c.gap)} offen` : `${fmtDuration(-c.gap)} zu viel`)))))) : null,
     h('a', { class: 'card-link', href: `#/tag/${day}` }, 'Zur Tagesansicht →'));
 }
