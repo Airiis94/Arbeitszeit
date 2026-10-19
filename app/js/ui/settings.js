@@ -10,7 +10,7 @@ import {
 } from '../core/time.js';
 import { APP_VERSION, SCHEMA_VERSION } from '../core/model.js';
 import { backupState } from './common.js';
-import { exportBackup, shareBackup, importFlow, canShareFiles, exportReport } from './backup.js';
+import { exportBackup, shareBackup, importFlow, canShareFiles, exportReport, downloadSnapshot } from './backup.js';
 import { ValidationError } from '../db/repo.js';
 
 const err = (m) => new ValidationError([m]);
@@ -49,6 +49,7 @@ export async function renderSettings(app) {
   const today = todayKey(now);
   const bs = backupState(meta, settings, now);
   const st = await storageInfo();
+  const snapshots = await app.repo.listSnapshots();
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
   const save = async (next, msg = 'Einstellungen gespeichert.') => {
@@ -88,6 +89,30 @@ export async function renderSettings(app) {
     h('p', { class: 'muted small' },
       'Die Datei landet im Download-Ordner. Bitte zusätzlich an einen sicheren Ort kopieren (z. B. Google Drive, PC, USB-Stick). ',
       'Eine automatische Hintergrund-Sicherung gibt es bewusst nicht – der Browser kann sie nicht zuverlässig garantieren.'),
+    h('h3', null, 'Automatische Sicherungskopien'),
+    h('p', { class: 'muted small' }, 'Vor jedem Update, vor jedem Import und einmal täglich legt die App eine vollständige Kopie aller Daten auf diesem Gerät ab. ',
+      'Damit lässt sich ein früherer Stand jederzeit zurückholen. Gegen das Löschen der Browserdaten oder Verlust des Handys hilft nur die heruntergeladene/geteilte Sicherung oben.'),
+    snapshots.length ? h('ul', { class: 'snap-list', 'data-testid': 'snapshots' }, snapshots.map((sn) => h('li', null,
+      h('div', null,
+        h('b', null, fmtDateTime(sn.at)), ` · ${sn.reason}`,
+        h('div', { class: 'muted small' }, `${sn.counts?.intervals ?? 0} Buchungen, ${sn.counts?.activities ?? 0} Tätigkeiten, ${sn.counts?.corrections ?? 0} Korrekturen`)),
+      h('div', { class: 'snap-actions' },
+        h('button', { type: 'button', class: 'btn btn-small', 'aria-label': 'Kopie herunterladen', onclick: () => downloadSnapshot(app, sn.key).catch(app.error) }, '⬇'),
+        h('button', {
+          type: 'button', class: 'btn btn-small', 'data-testid': 'snapshot-restore', onclick: async () => {
+            const ok = await confirmDialog({
+              title: 'Diesen Stand wiederherstellen?',
+              message: [`Alle Daten werden durch die Kopie vom ${fmtDateTime(sn.at)} (${sn.reason}) ersetzt.`, 'Der aktuelle Stand wird vorher automatisch als Kopie gesichert – das lässt sich also rückgängig machen.'],
+              confirmText: 'Wiederherstellen',
+              danger: true,
+            });
+            if (!ok) return;
+            try {
+              await app.repo.restoreSnapshot(sn.key);
+              toast('Der frühere Stand wurde wiederhergestellt.', { type: 'success', timeout: 7000 });
+            } catch (e) { app.error(e); }
+          },
+        }, 'Wiederherstellen'))))) : h('p', { class: 'muted small' }, 'Noch keine Kopie vorhanden (wird angelegt, sobald Daten erfasst sind).'),
     h('h3', null, 'CSV-Export (Auswertung)'),
     h('div', { class: 'row-2' }, field('Monat', csvMonth), h('label', { class: 'check' }, csvAll, ' gesamter Zeitraum')),
     h('div', { class: 'btn-row' },

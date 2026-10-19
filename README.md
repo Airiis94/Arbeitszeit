@@ -42,6 +42,9 @@ JSON-Datei, die du selbst verwahrst.
   Erzeugt auf dem Gerät, ohne Server.
 - **Wochentabelle drucken / als PDF**: Kalender → Woche → „Wochentabelle drucken / als PDF“ zeigt die
   Tabelle im gleichen Layout als Vorschau; „Drucken“ öffnet den Druckdialog (auch „Als PDF speichern“).
+- **Daten bleiben bei Updates erhalten**: kein Umbau der Datenbank; automatische Sicherungskopien auf dem
+  Gerät vor jedem Update, vor jedem Import und täglich (wiederherstellbar unter Einstellungen → Sicherung);
+  ein Browser-Test aktualisiert von früheren Versionen und vergleicht die Datenbank Byte für Byte.
 - **Einstellungen & Sicherung**: Kontobeginn, Anfangssaldo, Erfassungsart, Buchungsraster (Standard 15 min),
   JSON-Export/-Import, CSV-Export, Speicherstatus.
 

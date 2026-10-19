@@ -792,3 +792,9 @@ textarea.input { min-height: 80px; resize: vertical; }
 .od-over { color: var(--neg); font-weight: 700; }
 .act-unit-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; padding: 6px 8px; border-radius: 8px; background: var(--warn-bg); font-size: 0.82rem; }
 .act-dec { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Automatische Sicherungskopien */
+.snap-list { list-style: none; margin: 6px 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.snap-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.snap-list li > div:first-child { min-width: 0; }
+.snap-actions { display: flex; gap: 6px; flex: none; }

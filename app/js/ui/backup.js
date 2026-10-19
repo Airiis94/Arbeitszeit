@@ -4,7 +4,7 @@ import { h, formDialog, toast, downloadFile, pickFile, readFileAsText } from './
 import { buildBackup, parseBackup, backupSummary } from '../core/backup-format.js';
 import { fmtDateTime, fmtDate, todayKey, timeOfDay } from '../core/time.js';
 import { buildTextBackup } from '../core/textreport.js';
-import { COLLECTIONS } from '../core/model.js';
+import { COLLECTIONS, normalizeSettings } from '../core/model.js';
 import { buildNachweisXlsx, weeksInRange } from '../core/nachweis.js';
 import { isValidDayKey, isoWeek } from '../core/time.js';
 import { ValidationError } from '../db/repo.js';
@@ -25,6 +25,17 @@ async function createBackupFile(app) {
   const backup = await buildBackup(data, { deviceId: meta.deviceId, now });
   const name = fileName(now);
   return { name, text: JSON.stringify(backup, null, 1), now, backup, data };
+}
+
+/** Eine automatische Sicherungskopie als normale Sicherungsdatei (JSON) herunterladen. */
+export async function downloadSnapshot(app, key) {
+  const snap = await app.repo.getSnapshot(key);
+  if (!snap) throw new ValidationError(['Diese Sicherungskopie gibt es nicht mehr.']);
+  const meta = (await app.repo.loadAll()).meta;
+  const backup = await buildBackup({ ...snap.data, settings: normalizeSettings(snap.data.settings) }, { deviceId: meta.deviceId, now: snap.at });
+  const name = fileName(snap.at).replace('.json', '-kopie.json');
+  downloadFile(name, JSON.stringify(backup, null, 1), 'application/json');
+  toast(`„${name}“ wird heruntergeladen.`, { type: 'success' });
 }
 
 /** Lädt die Sicherung als Datei herunter (landet unter Android im Ordner „Downloads“). */
@@ -123,6 +134,7 @@ export async function importFlow(app) {
     onSubmit: async (form) => {
       const f = new FormData(form);
       if (f.get('backupFirst')) await exportBackup(app, { silent: true });
+      await app.repo.saveSnapshot('vor Import');
       if (f.get('mode') === 'replace') {
         await app.repo.importReplace(res.backup.data);
         toast('Import abgeschlossen: Daten wurden ersetzt.', { type: 'success' });

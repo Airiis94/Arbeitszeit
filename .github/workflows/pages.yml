@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # vollständige Historie: der Update-Test installiert frühere Versionen der App
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -30,7 +33,7 @@ jobs:
         run: |
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps chromium
-      - name: Browser-Tests (IndexedDB, Unterpfad, Update, Import/Export, Offline)
+      - name: Browser-Tests (IndexedDB, Unterpfad, Update von früheren Versionen, Import/Export, Offline)
         run: npm run test:e2e
 
   deploy:

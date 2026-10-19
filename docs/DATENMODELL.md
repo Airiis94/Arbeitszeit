@@ -63,9 +63,22 @@ Arbeitsphase geben; das wird innerhalb der Schreibtransaktion geprüft.
   gespeichert, sondern aus `activities` gebildet – `core/memory.js`), `rounding.interval` (Buchungsraster in Minuten),
   `autoBreak`, `theme`, `backupReminderDays`, `report` (`name`, `trainingStart` für den
   Ausbildungsnachweis). Felder früherer Versionen (`targetRules`, `countEmptyDays`,
-  `rounding.mode`, `rounding.carryRule`) werden beim Laden entfernt.
+  `rounding.mode`, `rounding.carryRule`) werden beim Laden entfernt (nur in der Anzeige; gespeichert
+  wird erst, wenn die Einstellungen gespeichert werden).
+- `snapshot:<Zeitpunkt>-<id>`: automatische Sicherungskopien aller Daten (`{ at, reason, appVersion,
+  counts, data }`, `reason` = „vor Update“, „vor Import“, „vor Wiederherstellen“ oder „täglich“).
+  Höchstens 5 tägliche und 5 anlassbezogene Kopien; Anzeige, Export und Import lesen diese Schlüssel
+  nicht. „Alle Daten löschen“ entfernt sie mit.
 - `meta`: `deviceId`, `createdAt`, `lastChangeAt`, `lastExportAt`, `lastExportName`,
   `lastImportAt` (Backup-/Synchronisationsstatus).
+
+### Updates und Datenerhalt
+
+- Die Datenbank hat Version 1; Updates der App ändern weder Aufbau noch gespeicherte Datensätze.
+  Neue Felder sind immer optional und werden beim Lesen mit Standardwerten ergänzt.
+- Der Service Worker löscht beim Update nur seine eigenen Datei-Caches (`arbeitszeit-*`), nie IndexedDB.
+- `tests/e2e/update.test.js` installiert frühere Versionen aus der Git-Historie, legt Daten an,
+  aktualisiert wie am Handy und prüft, dass die Datenbank danach Byte für Byte gleich ist.
 
 ## Abgeleitete Werte (nicht gespeichert)
 

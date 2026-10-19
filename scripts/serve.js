@@ -16,8 +16,10 @@ const TYPES = {
 /**
  * @param base       URL-Präfix, unter dem die App liegt (z. B. "/Arbeitszeit/" wie bei GitHub Pages)
  * @param overrides  Map relativer Pfad → Inhalt; ersetzt Dateien (für Tests, z. B. neue sw.js-Version)
+ * @param root       App-Verzeichnis (Text oder Funktion, die es liefert – z. B. für Update-Tests mit
+ *                   einer älteren Version); Standard: ../app/
  */
-export function createServer({ base = '/', overrides = new Map() } = {}) {
+export function createServer({ base = '/', overrides = new Map(), root = ROOT } = {}) {
   return http.createServer(async (req, res) => {
     try {
       const full = decodeURIComponent(new URL(req.url, 'http://x').pathname);
@@ -32,8 +34,9 @@ export function createServer({ base = '/', overrides = new Map() } = {}) {
         res.end(overrides.get(path));
         return;
       }
-      let file = normalize(join(ROOT, path));
-      if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
+      const dir = typeof root === 'function' ? root() : root;
+      let file = normalize(join(dir, path));
+      if (!file.startsWith(dir)) { res.writeHead(403).end(); return; }
       if ((await stat(file).catch(() => null))?.isDirectory()) file = join(file, 'index.html');
       const body = await readFile(file);
       res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });

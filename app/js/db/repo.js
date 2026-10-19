@@ -1,14 +1,19 @@
 // Datenzugriff der App. Jede Änderung läuft in genau einer IndexedDB-Transaktion:
 // lesen → prüfen → schreiben → Änderungsprotokoll → Metadaten. Schlägt etwas fehl, wird nichts geschrieben.
 
-import { openDb, transact, getAll, get, put, clear, STORES } from './db.js';
+import { openDb, transact, getAll, get, put, clear, del, getAllPrefix, STORES } from './db.js';
 import { planClockAction } from '../core/state.js';
 import { validateIntervalChange } from '../core/validate.js';
 import { planMerge } from '../core/backup-format.js';
 import {
-  newRecord, touch, uuid, defaultSettings, normalizeSettings, COLLECTIONS,
+  newRecord, touch, uuid, defaultSettings, normalizeSettings, COLLECTIONS, APP_VERSION,
 } from '../core/model.js';
 import { todayKey } from '../core/time.js';
+
+const SNAPSHOT_PREFIX = 'snapshot:';
+// Aufbewahrung: die 5 neuesten täglichen Kopien und die 5 neuesten Kopien vor Update/Import/Wiederherstellen
+const SNAPSHOT_KEEP_DAILY = 5;
+const SNAPSHOT_KEEP_EVENTS = 5;
 
 export class ValidationError extends Error {
   constructor(messages) {
@@ -268,10 +273,62 @@ export class Repo {
     return stats;
   }
 
+  // ---------- Automatische Sicherungskopien (Sicherheitsnetz auf dem Gerät) ----------
+  // Vollständige Kopie aller Daten im Schlüsselspeicher „kv“ unter „snapshot:<Zeitpunkt>“ – vor jedem
+  // Update, vor jedem Import und einmal täglich. Keine Änderung am Datenbankaufbau; Anzeige, Export und
+  // Import lesen diese Schlüssel nicht. Aufbewahrt werden höchstens 5 tägliche und 5 anlassbezogene Kopien.
+
+  /** Legt eine Sicherungskopie an. @returns Schlüssel oder null (keine Daten vorhanden) */
+  async saveSnapshot(reason, now = Date.now()) {
+    return transact(this.db, STORES, 'readwrite', async (tx) => {
+      const data = {};
+      for (const name of COLLECTIONS) data[name] = await getAll(tx, name);
+      data.settings = (await get(tx, 'kv', 'settings'))?.value || null;
+      const records = COLLECTIONS.reduce((s, n) => s + data[n].length, 0);
+      if (!records) return null;
+      const key = `${SNAPSHOT_PREFIX}${String(now).padStart(15, '0')}-${uuid().slice(0, 8)}`; // eindeutig, auch bei gleicher Zeit
+      const counts = Object.fromEntries(COLLECTIONS.map((n) => [n, data[n].filter((r) => !r.deleted).length]));
+      await put(tx, 'kv', { key, value: { at: now, reason, appVersion: APP_VERSION, counts, data } });
+      const all = (await getAllPrefix(tx, 'kv', SNAPSHOT_PREFIX)).sort((a, b) => b.value.at - a.value.at);
+      const daily = all.filter((x) => x.value.reason === 'täglich');
+      const events = all.filter((x) => x.value.reason !== 'täglich');
+      for (const old of [...daily.slice(SNAPSHOT_KEEP_DAILY), ...events.slice(SNAPSHOT_KEEP_EVENTS)]) await del(tx, 'kv', old.key);
+      return key;
+    });
+  }
+
+  /** Tägliche Kopie, falls die letzte älter als 20 Stunden ist. */
+  async dailySnapshot(now = Date.now()) {
+    const list = await this.listSnapshots();
+    if (list.length && now - list[0].at < 20 * 3600000) return null;
+    return this.saveSnapshot('täglich', now);
+  }
+
+  /** Übersicht der Sicherungskopien (neueste zuerst), ohne die Daten selbst. */
+  async listSnapshots() {
+    const all = await transact(this.db, ['kv'], 'readonly', (tx) => getAllPrefix(tx, 'kv', SNAPSHOT_PREFIX));
+    return all.map((x) => ({ key: x.key, at: x.value.at, reason: x.value.reason, appVersion: x.value.appVersion, counts: x.value.counts }))
+      .sort((a, b) => b.at - a.at);
+  }
+
+  async getSnapshot(key) {
+    const rec = await transact(this.db, ['kv'], 'readonly', (tx) => get(tx, 'kv', key));
+    return rec?.value || null;
+  }
+
+  /** Stellt eine Sicherungskopie wieder her; der aktuelle Stand wird vorher selbst gesichert. */
+  async restoreSnapshot(key, now = Date.now()) {
+    const snap = await this.getSnapshot(key);
+    if (!snap) throw new ValidationError(['Diese Sicherungskopie gibt es nicht mehr.']);
+    await this.saveSnapshot('vor Wiederherstellen', now);
+    await this.importReplace(snap.data, now + 1);
+  }
+
   /** Löscht alle Daten unwiderruflich (Einstellungen werden auf Standard zurückgesetzt). */
   async wipe(now = Date.now()) {
     await transact(this.db, STORES, 'readwrite', async (tx) => {
       for (const name of COLLECTIONS) await clear(tx, name);
+      for (const s of await getAllPrefix(tx, 'kv', SNAPSHOT_PREFIX)) await del(tx, 'kv', s.key);
       await put(tx, 'kv', { key: 'settings', value: { ...defaultSettings(todayKey(now)), updatedAt: now } });
       const m = await get(tx, 'kv', 'meta');
       await put(tx, 'kv', { key: 'meta', value: { ...(m?.value || {}), lastChangeAt: now } });

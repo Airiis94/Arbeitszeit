@@ -407,6 +407,43 @@ test('Export → Löschen → Import stellt alle Daten wieder her', async () => 
   assert.deepEqual(restored.sort((a, b) => a.start - b.start), before.sort((a, b) => a.start - b.start));
 });
 
+test('Sicherungskopie auf dem Gerät: früheren Stand wiederherstellen, aktueller Stand wird vorher gesichert', async () => {
+  await workday();
+  await page.evaluate(async () => {
+    const r = window.__app.repo;
+    await r.saveActivity({ day: '2026-03-02', title: 'Löten', minutes: 240, intensity: null, category: 'Werkstatt', description: '' });
+    await r.saveSnapshot('Test');
+    // danach versehentlich gelöscht
+    await r.deleteActivity((await r.loadAll()).activities[0].id);
+  });
+  assert.equal(await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.length), 0);
+  await page.goto(`${base}#/einstellungen`);
+  await page.waitForSelector('[data-testid=snapshots]');
+  assert.match(await text('snapshots'), /Test\s*1 Buchungen|Test.*2 Buchungen/s);
+  await page.click('[data-testid=snapshots] li:has-text("Test") [data-testid=snapshot-restore]');
+  await page.click('dialog button[type=submit]');
+  const titles = () => page.evaluate(async () => (await window.__app.repo.loadAll()).activities.map((a) => a.title));
+  for (let i = 0; i < 30 && (await titles()).length === 0; i += 1) await page.waitForTimeout(100);
+  const acts = await titles();
+  assert.deepEqual(acts, ['Löten']);
+  // der Stand vor dem Wiederherstellen ist selbst als Kopie da (rückgängig machbar)
+  const snaps = await page.evaluate(() => window.__app.repo.listSnapshots());
+  assert.ok(snaps.some((x) => x.reason === 'vor Wiederherstellen' && x.counts.activities === 0));
+  // tägliche Kopie beim Start: am nächsten Tag genau eine, auch bei mehrfachem Öffnen
+  const dailyCount = async () => (await page.evaluate(() => window.__app.repo.listSnapshots())).filter((x) => x.reason === 'täglich').length;
+  assert.equal(await dailyCount(), 0); // heute gibt es schon frische Kopien
+  await setTime(t('2026-03-03', '14:00')); // > 20 h nach der letzten Kopie
+  await page.goto(`${base}#/heute`);
+  await page.reload();
+  await page.waitForSelector('[data-testid=status]');
+  for (let i = 0; i < 20 && await dailyCount() === 0; i += 1) await page.waitForTimeout(100);
+  assert.equal(await dailyCount(), 1);
+  await page.reload();
+  await page.waitForSelector('[data-testid=status]');
+  await page.waitForTimeout(300);
+  assert.equal(await dailyCount(), 1);
+});
+
 test('Fehlerhafte Importdatei wird abgelehnt, Daten bleiben unverändert', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'az-'));
   await workday();
@@ -541,6 +578,9 @@ test('App-Update: Hinweis statt ungefragtem Neuladen, Daten bleiben erhalten', a
   await waitStatus('Arbeit läuft');
   const keys = await page.evaluate(() => caches.keys());
   assert.deepEqual(keys, ['arbeitszeit-v-test-update']);
+  // Vor dem Update wurde automatisch eine Sicherungskopie der Daten angelegt
+  const snaps = await page.evaluate(() => window.__app.repo.listSnapshots());
+  assert.ok(snaps.some((x) => x.reason === 'vor Update' && x.counts.intervals === 1), JSON.stringify(snaps));
   const list = await intervals();
   assert.equal(list.length, 1);
   assert.equal(list[0].start, t(DAY, '08:00').getTime());

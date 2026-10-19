@@ -128,3 +128,6 @@ export const getAll = (tx, name) => req(store(tx, name).getAll());
 export const get = (tx, name, key) => req(store(tx, name).get(key));
 export const put = (tx, name, value) => req(store(tx, name).put(value));
 export const clear = (tx, name) => req(store(tx, name).clear());
+export const del = (tx, name, key) => req(store(tx, name).delete(key));
+/** Alle Einträge, deren Schlüssel mit `prefix` beginnt (Text-Schlüssel). */
+export const getAllPrefix = (tx, name, prefix) => req(store(tx, name).getAll(globalThis.IDBKeyRange.bound(prefix, `${prefix}\uffff`)));

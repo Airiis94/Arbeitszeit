@@ -127,7 +127,10 @@ function showUpdateBanner(reg) {
   const banner = h('div', { id: 'update-banner', class: 'update-banner', role: 'status' },
     h('span', null, 'Eine neue Version der App ist verfügbar.'),
     h('button', {
-      type: 'button', class: 'btn btn-small btn-primary', onclick: () => {
+      type: 'button', class: 'btn btn-small btn-primary', onclick: async (ev) => {
+        ev.currentTarget.disabled = true;
+        // Sicherheitsnetz: vor dem Wechsel eine vollständige Kopie aller Daten auf dem Gerät ablegen
+        try { await app.repo?.saveSnapshot('vor Update'); } catch (e) { console.warn('Sicherungskopie fehlgeschlagen', e); }
         updateRequested = true;
         reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
       },
@@ -214,6 +217,8 @@ async function start() {
   updateOnlineState();
   await render();
   registerServiceWorker();
+  // tägliche Sicherungskopie auf dem Gerät (nur wenn Daten vorhanden, höchstens eine pro Tag)
+  app.repo.dailySnapshot().catch((e) => console.warn('Tägliche Sicherungskopie fehlgeschlagen', e));
   if (!window.isSecureContext) {
     toast('Hinweis: Die Seite ist nicht über HTTPS geöffnet – Installation und Offline-Betrieb sind deshalb nicht verfügbar.', { type: 'info', timeout: 10000 });
   }
