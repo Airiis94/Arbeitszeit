@@ -64,7 +64,14 @@ Das wird automatisch geprüft (auch mit Zufallsdaten).
 
 - Es gibt **keine Sollzeit**. Ob ein Tag 4 oder 9 Stunden hat, verändert das Konto nicht.
 - Stempel zählen sofort: Wer um 08:50 einstempelt, sieht direkt −0:05.
-- Gezählt werden alle Tage ab dem **Kontobeginn** (Einstellungen) bis heute.
+- Gezählt werden alle Tage ab dem **Kontobeginn** (Einstellungen) bis heute. Das Konto läuft
+  **durchgehend über Wochen, Monate und Jahre** weiter – es gibt keinen Abschluss und kein Zurücksetzen.
+  Wochen- und Monatsübersicht sowie der Verlauf zeigen: **Übertrag** (Stand vor dem Zeitraum) +
+  **Veränderung** (Differenzminuten und Korrekturen im Zeitraum) = **Zeitkonto am Ende**; dieser Stand
+  ist der Übertrag des nächsten Zeitraums (`periodBalance` in `core/calc.js`).
+- Je Woche oder Monat wird nichts gespeichert: Der Stand wird bei jeder Anzeige aus den gestempelten
+  Zeiten neu berechnet. Spätere Änderungen an einem früheren Tag wirken sich deshalb automatisch auf
+  alle folgenden Wochen und Monate aus.
 - **Korrekturen** (Datum, ±Minuten, Pflicht-Begründung) wirken direkt auf das Konto.
 - Unvollständige oder fehlerhafte Tage (z. B. Feierabend vergessen) werden als Warnung gemeldet;
   ihre bereits vorhandenen Stempel zählen trotzdem.

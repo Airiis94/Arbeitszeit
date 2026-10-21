@@ -798,3 +798,6 @@ textarea.input { min-height: 80px; resize: vertical; }
 .snap-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
 .snap-list li > div:first-child { min-width: 0; }
 .snap-actions { display: flex; gap: 6px; flex: none; }
+
+/* Zeitkonto-Verlauf: Übertrag und Stand */
+.ledger-carry td { font-weight: 700; background: var(--surface-2); }

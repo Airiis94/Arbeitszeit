@@ -2,7 +2,7 @@ import { work, pause, pauseMin, settings, dayWithNet, at, addDays } from './help
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { bookStamp, bookDuration, bookInterval, bookDay, suggestLeave, gridOptions, stampChoices, bookingInterval } from '../../app/js/core/booking.js';
-import { computeAccount, computeDay, dayRow, activityCheck } from '../../app/js/core/calc.js';
+import { computeAccount, computeDay, dayRow, activityCheck, periodBalance } from '../../app/js/core/calc.js';
 import { newRecord, newInterval, touch, normalizeSettings } from '../../app/js/core/model.js';
 import { timeOfDay } from '../../app/js/core/time.js';
 
@@ -271,6 +271,48 @@ describe('Tätigkeiten = festgelegte Netto-Arbeitszeit', () => {
     const chk = activityCheck(run, []);
     assert.equal(chk.running, true);
     assert.equal(chk.target, 120);
+  });
+});
+
+describe('Zeitkonto läuft über Wochen, Monate und Jahre weiter', () => {
+  // Kontobeginn 28.12.2026 (Mo), Anfangssaldo +0:25; Stempel mit Differenzen an mehreren Tagen
+  const days = [
+    work('2026-12-28', '08:50', '17:00'), // −0:05
+    work('2026-12-31', '08:42', '15:00'), // +0:03
+    work('2027-01-04', '08:52', '17:20'), // −0:07, +0:05
+    work('2027-01-29', '08:45', '17:49'), // +0:04
+    work('2027-02-01', '08:40', '16:00'), // +0:05
+  ];
+  const corrections = [newRecord({ day: '2027-01-15', minutes: -30, reason: 'Arzt' })];
+  const acc = computeAccount({ intervals: days, corrections, settings: settings('2026-12-28', { startBalanceMin: 25 }), today: '2027-02-03', now: at('2027-02-03', '23:00') });
+
+  test('kein Zurücksetzen an Wochen-, Monats- oder Jahresgrenzen', () => {
+    assert.equal(acc.rowsByDay.get('2026-12-31').balance, 25 - 5 + 3);
+    assert.equal(acc.rowsByDay.get('2027-01-01').balance, 23); // Jahreswechsel: Stand bleibt
+    assert.equal(acc.rowsByDay.get('2027-01-04').balance, 23 - 7 + 5);
+    assert.equal(acc.rowsByDay.get('2027-01-31').balance, 21 - 30 + 4);
+    assert.equal(acc.balance, -5 + 5);
+  });
+
+  test('Übertrag + Veränderung = Ende; das Ende ist der Übertrag des nächsten Zeitraums', () => {
+    const dec = periodBalance(acc, '2026-12-01', '2026-12-31');
+    assert.deepEqual(dec, { carryIn: 25, change: -2, end: 23, counted: 4 }); // Konto beginnt am 28.12.
+    const jan = periodBalance(acc, '2027-01-01', '2027-01-31');
+    assert.deepEqual(jan, { carryIn: 23, change: -7 + 5 - 30 + 4, end: -5, counted: 31 });
+    const feb = periodBalance(acc, '2027-02-01', '2027-02-28');
+    assert.equal(feb.carryIn, jan.end);
+    assert.equal(feb.end, acc.balance);
+    // Wochen über den Monatswechsel hinweg
+    const w1 = periodBalance(acc, '2027-01-25', '2027-01-31');
+    const w2 = periodBalance(acc, '2027-02-01', '2027-02-07');
+    assert.equal(w2.carryIn, w1.end);
+    assert.equal(w1.end, acc.rowsByDay.get('2027-01-31').balance);
+    // Zeitraum in der Zukunft: Übertrag = aktueller Stand
+    assert.deepEqual(periodBalance(acc, '2027-03-01', '2027-03-31'), { carryIn: acc.balance, change: 0, end: acc.balance, counted: 0 });
+    // Zeitraum vor dem Kontobeginn: kein Konto
+    assert.equal(periodBalance(acc, '2026-11-01', '2026-11-30'), null);
+    // Kontobeginn in der Zukunft: kein Konto
+    assert.equal(periodBalance(computeAccount({ intervals: [], settings: settings('2027-05-01'), today: '2027-02-03' }), '2027-02-01', '2027-02-28'), null);
   });
 });
 

@@ -742,6 +742,44 @@ test('Feierabend früher, aber spätere Viertelstunde buchen (Konto nutzen); Erf
   await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '+0:05');
 });
 
+test('Zeitkonto läuft über Wochen und Monate weiter: Übertrag sichtbar in Zeitkonto und Kalender', async () => {
+  await page.evaluate(async () => {
+    const { newInterval } = await import('./js/core/model.js');
+    const { localTimestamp } = await import('./js/core/time.js');
+    const r = window.__app.repo;
+    const s = (await r.loadAll()).settings;
+    await r.saveSettings({ ...s, accountStart: '2026-02-01', startBalanceMin: 30 });
+    // Fr 27.02.: Kommen 08:50 → 08:45 = −0:05
+    await r.saveIntervals([newInterval({ kind: 'work', day: '2026-02-27', start: localTimestamp('2026-02-27', '08:50'), end: localTimestamp('2026-02-27', '17:00'), source: 'clock' })]);
+  });
+  await workday(); // Mo 02.03.: Gehen 16:40 → 16:45 = −0:05
+  const rowText = (id) => page.$eval(`[data-testid=${id}]`, (el) => el.innerText.replace(/\s+/g, ' ').trim());
+  // Zeitkonto Februar: Übertrag aus Januar (= Anfangssaldo), Stand Ende Februar
+  await page.goto(`${base}#/konto/2026-02`);
+  await page.waitForSelector('[data-testid=ledger-carry]');
+  assert.equal(await rowText('ledger-carry'), 'Übertrag aus Januar +0:30');
+  assert.equal(await rowText('ledger-end'), 'Stand Ende Februar +0:25');
+  // März beginnt mit dem Stand von Ende Februar
+  await page.goto(`${base}#/konto/2026-03`);
+  await page.waitForFunction(() => document.querySelector('[data-testid=ledger-carry]')?.textContent.includes('Februar'));
+  assert.equal(await rowText('ledger-carry'), 'Übertrag aus Februar +0:25');
+  assert.equal(await rowText('ledger-end'), 'Stand heute +0:20');
+  assert.equal(await text('account-balance'), '+0:20');
+  // Kalender: Woche 23.02.–01.03. (über den Monatswechsel) und die Folgewoche
+  await page.goto(`${base}#/kalender/woche/2026-02-23`);
+  await page.waitForSelector('[data-testid=carry-in]');
+  assert.equal(await rowText('carry-in'), 'Übertrag aus der Vorwoche +0:30');
+  assert.equal(await rowText('period-end'), 'Zeitkonto am Ende +0:25');
+  await page.goto(`${base}#/kalender/woche/2026-03-02`);
+  await page.waitForFunction(() => document.querySelector('[data-testid=carry-in]')?.textContent.includes('+0:25'));
+  assert.equal(await rowText('period-end'), 'Zeitkonto am Ende +0:20');
+  // Monatsansicht März
+  await page.goto(`${base}#/kalender/monat/2026-03`);
+  await page.waitForFunction(() => document.querySelector('[data-testid=carry-in]')?.textContent.includes('Vormonat'));
+  assert.equal(await rowText('carry-in'), 'Übertrag aus dem Vormonat +0:25');
+  assert.equal(await rowText('period-end'), 'Zeitkonto am Ende +0:20');
+});
+
 test('Kurzer Tag erzeugt keine Minusstunden', async () => {
   await setTime(t(DAY, '08:45'));
   await click('btn-start');

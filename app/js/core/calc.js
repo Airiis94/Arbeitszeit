@@ -232,6 +232,23 @@ export function computeAccount({ intervals = [], dayInfos = [], corrections = []
   };
 }
 
+/**
+ * Zeitkonto über einen Zeitraum (Woche, Monat …): das Konto läuft durchgehend weiter.
+ * Übertrag = Stand vor dem ersten Tag des Zeitraums, Veränderung = Differenzminuten + Korrekturen im
+ * Zeitraum, Ende = Übertrag + Veränderung (= Stand am letzten gezählten Tag).
+ * @returns {{ carryIn, change, end, counted }} oder null, wenn das Konto noch nicht begonnen hat
+ */
+export function periodBalance(acc, from, to) {
+  if (!acc.rows.length || to < acc.start) return null; // Konto noch nicht begonnen
+  const i = acc.rows.findIndex((r) => r.day >= from);
+  if (i === -1) return { carryIn: acc.balance, change: 0, end: acc.balance, counted: 0 }; // Zeitraum liegt in der Zukunft
+  const first = acc.rows[i];
+  const carryIn = i === 0 ? first.balance - first.effect - first.correction : acc.rows[i - 1].balance;
+  const inRange = acc.rows.filter((r) => r.day >= from && r.day <= to);
+  const change = inRange.reduce((s, r) => s + r.effect + r.correction, 0);
+  return { carryIn, change, end: carryIn + change, counted: inRange.length };
+}
+
 /** Kennzahlen eines Tages: gestempelt (minutengenau) und gebucht (Raster) samt Kontowirkung. */
 export function dayRow(day, intervals, info, settings, now = Date.now(), interval = bookingInterval(settings)) {
   const d = computeDay(intervals, { now, autoBreak: settings.autoBreak });

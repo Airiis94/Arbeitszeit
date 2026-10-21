@@ -1,7 +1,7 @@
 // Kalender: Monats- und Wochenansicht mit Zusammenfassung. Antippen eines Tages öffnet die Tagesansicht.
 
 import { h } from './dom.js';
-import { computeAccount, dayRow, summarize, STATUS_LABELS } from '../core/calc.js';
+import { computeAccount, dayRow, summarize, periodBalance, STATUS_LABELS } from '../core/calc.js';
 import {
   fmtDuration, fmtDate, fmtMonth, addDays, addMonths, todayKey, monthKey, firstOfMonth, lastOfMonth,
   startOfWeek, weekdayIndex, isoWeek, WEEKDAYS_SHORT, isValidDayKey,
@@ -23,7 +23,8 @@ function rowsFor(from, to, data, acc, now) {
   return out;
 }
 
-function summaryCard(title, rows, endBalance) {
+/** @param pb Zeitkonto im Zeitraum (periodBalance) – das Konto läuft über Wochen/Monate weiter */
+function summaryCard(title, rows, pb, prevLabel) {
   const s = summarize(rows);
   return h('div', { class: 'card summary' },
     h('h2', null, title),
@@ -32,14 +33,12 @@ function summaryCard(title, rows, endBalance) {
       h('div', null, h('span', null, 'davon gestempelt'), h('b', { class: 'num' }, fmtDuration(s.netMin))),
       h('div', null, h('span', null, 'Pausen (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedBreakMin))),
       h('div', null, h('span', null, 'Arbeitstage'), h('b', { class: 'num' }, String(s.workedDays))),
-      h('div', null, h('span', null, 'Differenzminuten'), h('b', null, signed(s.effect))),
-      h('div', { class: 'sum-main' }, h('span', null, 'Zeitkonto am Ende'), h('b', null, endBalance == null ? '–' : signed(endBalance))),
+      pb ? [
+        h('div', { 'data-testid': 'carry-in' }, h('span', null, `Übertrag ${prevLabel}`), h('b', null, signed(pb.carryIn))),
+        h('div', null, h('span', null, 'Veränderung im Zeitraum (inkl. Korrekturen)'), h('b', null, signed(pb.change))),
+        h('div', { class: 'sum-main', 'data-testid': 'period-end' }, h('span', null, 'Zeitkonto am Ende'), h('b', null, signed(pb.end))),
+      ] : h('div', null, h('span', null, 'Zeitkonto'), h('b', null, 'beginnt später (Kontobeginn)')),
       s.open ? h('div', { class: 'neg' }, h('span', null, 'Offen/fehlerhaft'), h('b', { class: 'num' }, String(s.open))) : null));
-}
-
-function lastBalance(rows) {
-  for (let i = rows.length - 1; i >= 0; i -= 1) if (rows[i].balance != null) return rows[i].balance;
-  return null;
 }
 
 function legend() {
@@ -81,7 +80,7 @@ function monthView(app, mk, data, acc, now, today) {
       WEEKDAYS_SHORT.map((w) => h('div', { class: 'cal-head' }, w)),
       cells),
     legend(),
-    summaryCard(`Monatsübersicht ${fmtMonth(mk)}`, rows, lastBalance(rows)),
+    summaryCard(`Monatsübersicht ${fmtMonth(mk)}`, rows, periodBalance(acc, from, to), 'aus dem Vormonat'),
   ];
 }
 
@@ -109,7 +108,7 @@ function weekView(app, weekStart, data, acc, now, today) {
       h('td', null, r.balance == null ? '' : signed(r.balance)))))),
     ),
     legend(),
-    summaryCard('Wochenübersicht', rows, lastBalance(rows)),
+    summaryCard('Wochenübersicht', rows, periodBalance(acc, weekStart, to), 'aus der Vorwoche'),
     h('div', { class: 'btn-col' },
       h('button', {
         type: 'button', class: 'btn btn-block', 'data-testid': 'week-report', onclick: () => exportReport(app, data, weekStart, to).catch(app.error),
