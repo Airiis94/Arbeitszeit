@@ -171,6 +171,26 @@ test('Vergessener Feierabend wird erkannt und nachträglich korrigiert', async (
   assert.ok(await page.isVisible('text=Grund: Feierabend vergessen'));
 });
 
+test('Startseite: Arbeitszeit direkt über „Ändern“ korrigieren (eigenes Symbol, nicht die Stempel-Auswahl)', async () => {
+  await workday(); // 08:00–16:40, Pause 12:00–12:30
+  await page.goto(`${base}#/heute`);
+  await page.waitForSelector('[data-testid=edit-work]');
+  assert.match(await page.textContent('[data-testid=edit-work]'), /Ändern/);
+  assert.ok(await page.$('[data-testid=edit-work] svg'), 'Symbol Uhr mit Stift');
+  assert.ok(await page.$('[data-testid=edit-break]'), 'auch Pausen sind änderbar');
+  // Löschen bleibt der Tagesansicht vorbehalten
+  assert.equal(await page.$('.entry-work button[aria-label=Löschen]'), null);
+  await click('edit-work');
+  await page.waitForSelector('dialog input[name=end]');
+  assert.match(await page.textContent('dialog'), /Arbeitsphase bearbeiten/);
+  await page.fill('dialog input[name=end]', '17:00');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await page.waitForFunction(() => document.querySelector('[data-testid=booked-range]')?.textContent === '08:00 – 17:00');
+  const list = await intervals();
+  assert.equal(list.find((i) => i.kind === 'work').end, t(DAY, '17:00').getTime());
+});
+
 test('Pause per Schnellwahl nachtragen und wieder löschen', async () => {
   await setTime(t(DAY, '08:00'));
   await click('btn-start');

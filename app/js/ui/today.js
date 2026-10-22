@@ -7,7 +7,7 @@ import { deriveState } from '../core/state.js';
 import { bookDay, suggestLeave, bookingInterval } from '../core/booking.js';
 import { fmtDuration, fmtDate, timeOfDay, todayKey, fmtDateTime, HOUR_MS } from '../core/time.js';
 import { signed, entryList, statusBadge, backupState, issueList } from './common.js';
-import { quickBreak, editBreakDialog, undoToast, chooseBookingDialog, quickActivityDialog } from './editors.js';
+import { quickBreak, editBreakDialog, editWorkDialog, undoToast, chooseBookingDialog, quickActivityDialog } from './editors.js';
 import { icon } from './icons.js';
 
 const MODE_LABEL = { idle: 'Nicht eingestempelt', working: 'Arbeit läuft', break: 'Pause läuft' };
@@ -176,9 +176,14 @@ export async function renderToday(app) {
       h('div', { class: 'card-head' },
         h('h2', null, 'Buchungen'),
         h('a', { class: 'btn btn-small', href: `#/tag/${workDay}` }, 'Tag bearbeiten')),
-      entryList(workDay, d, { booking, onChoose: quarter ? (s) => chooseBookingDialog(app, data.intervals, s, workDay, interval, acc.balance) : null }),
+      entryList(workDay, d, {
+        booking,
+        onChoose: quarter ? (s) => chooseBookingDialog(app, data.intervals, s, workDay, interval, acc.balance) : null,
+        // Arbeitszeit/Pause direkt hier ändern (Beginn, Ende, Dauer)
+        onEdit: (rec) => (rec.kind === 'work' ? editWorkDialog(app, workDay, rec) : editBreakDialog(app, workDay, rec, d.sessions)),
+      }),
       quarter && booking.stamps.length
-        ? h('p', { class: 'muted small' }, '✎ Zeit antippen, um die gebuchte Zeit zu wählen (z. B. 08:45 oder 09:00) – die Differenz wird mit dem Zeitkonto verrechnet.') : null,
+        ? h('p', { class: 'muted small' }, '„Ändern“: Beginn und Ende korrigieren. ✎ an einer Zeit: gebuchte Viertelstunde wählen (z. B. 08:45 oder 09:00) – die Differenz wird mit dem Zeitkonto verrechnet.') : null,
       h('a', { class: 'card-link', href: `#/taetigkeiten/${workDay}` }, 'Tätigkeiten erfassen →')),
   );
 }

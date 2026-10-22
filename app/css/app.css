@@ -425,8 +425,15 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
   align-items: center;
   gap: 4px 6px;
 }
-/* Bearbeiten/Löschen rechtsbündig; bei Platzmangel in eigener Zeile statt über den Rand */
-.entry-main .icon-btn:first-of-type { margin-left: auto; }
+/* Ändern/Löschen immer zusammen rechtsbündig; bei Platzmangel gemeinsam in eigener Zeile */
+.entry-actions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.entry-edit {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 40px; padding: 4px 10px 4px 7px;
+  border: 1.5px solid var(--primary); border-radius: 999px; background: var(--info-bg); color: var(--primary);
+  font: inherit; font-size: 0.85rem; font-weight: 800; cursor: pointer;
+}
+.entry-edit svg { width: 22px; height: 22px; flex: none; }
+.entry-edit:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 .entry-kind { font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--work-bg); color: var(--work); }
 .entry-break .entry-kind { background: var(--break-bg); color: var(--break); }
 .entry-range { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; white-space: nowrap; }

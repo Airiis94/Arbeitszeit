@@ -4,6 +4,7 @@ import { h } from './dom.js';
 import { STATUS_LABELS } from '../core/calc.js';
 import { fmtDuration, timeOfDay, fmtTimeRel, DAY_MS } from '../core/time.js';
 import { DAY_TYPES } from '../core/model.js';
+import { icon } from './icons.js';
 
 export function statusBadge(status, dayType) {
   if (status === 'empty' && dayType && dayType !== 'arbeit') {
@@ -67,8 +68,14 @@ export function entryList(day, dayCalc, { onEdit, onDelete, booking, onChoose } 
         h('span', { class: 'entry-range', 'data-testid': 'booked-range' }, range),
         h('span', { class: 'entry-dur num' }, dur),
         h('span', { class: 'entry-src', title: rec.source === 'clock' ? 'gestempelt' : 'manuell eingetragen' }, rec.source === 'clock' ? '' : 'manuell'),
-        onEdit && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Bearbeiten', onclick: () => onEdit(rec) }, '✎'),
-        onDelete && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Löschen', onclick: () => onDelete(rec) }, '🗑')),
+        onEdit || onDelete ? h('span', { class: 'entry-actions' },
+          // eigenes Symbol (Uhr mit Stift) + Beschriftung: Beginn/Ende ändern – nicht zu verwechseln mit ✎ an den Stempeln
+          onEdit && h('button', {
+            class: 'entry-edit', type: 'button', 'aria-label': 'Bearbeiten', 'data-testid': `edit-${rec.kind}`,
+            title: isWork ? 'Arbeitszeit ändern (Beginn/Ende)' : 'Pause ändern',
+            onclick: () => onEdit(rec),
+          }, icon('clockEdit', { stroke: '2' }), h('span', null, 'Ändern')),
+          onDelete && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Löschen', title: 'Eintrag löschen', onclick: () => onDelete(rec) }, '🗑')) : null),
       stamps.length && onChoose ? h('div', { class: 'entry-stamps' }, stamps.map((st) => h('button', {
         type: 'button', class: `stamp stamp-btn${st.manual ? ' stamp-manual' : ''}`, 'data-testid': `stamp-${st.field}-${rec.kind}`,
         title: 'Gebuchte Zeit wählen',
