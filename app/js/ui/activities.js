@@ -3,7 +3,7 @@
 import { h, confirmDialog } from './dom.js';
 import { dayRow, activityCheck, computeAccount } from '../core/calc.js';
 import { fmtDuration, fmtHoursDecimal, fmtDate, addDays, todayKey, isValidDayKey } from '../core/time.js';
-import { editActivityDialog, undoToast } from './editors.js';
+import { editActivityDialog, diceDialog, undoToast } from './editors.js';
 
 export async function renderActivities(app, params) {
   const day = isValidDayKey(params[0]) ? params[0] : todayKey();
@@ -72,7 +72,13 @@ export async function renderActivities(app, params) {
         onchange: (ev) => { if (isValidDayKey(ev.target.value)) app.navigate(`#/taetigkeiten/${ev.target.value}`); },
       })),
     status,
-    h('button', { type: 'button', class: 'btn btn-primary btn-block', 'data-testid': 'add-activity', onclick: () => editActivityDialog(app, day, null, categories, suggest, { activities: data.activities, settings: data.settings }) }, '+ Tätigkeit erfassen'),
+    h('div', { class: 'act-buttons' },
+      h('button', { type: 'button', class: 'btn btn-primary', 'data-testid': 'add-activity', onclick: () => editActivityDialog(app, day, null, categories, suggest, { activities: data.activities, settings: data.settings }) }, '+ Tätigkeit erfassen'),
+      chk.gap > 0 ? h('button', {
+        type: 'button', class: 'btn btn-dice', 'data-testid': 'dice-day',
+        title: 'Tätigkeiten nach deiner Statistik vorschlagen lassen',
+        onclick: () => diceDialog(app, day, { activities: data.activities, openMin: chk.gap }),
+      }, acts.length ? '🎲 Rest würfeln' : '🎲 Tag würfeln') : null),
     acts.length ? h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('h2', null, `Erfasste Tätigkeiten (${acts.length})`)),
       h('ul', { class: 'act-list' }, acts.map((a) => h('li', { class: 'act-item' },

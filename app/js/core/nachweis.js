@@ -9,7 +9,7 @@
 import {
   addDays, startOfWeek, isoWeek, fmtDate, fmtDuration, fmtTimeRel, WEEKDAYS_LONG, daysBetween, parseDayKey, isValidDayKey,
 } from './time.js';
-import { computeDay, groupByDay, calcAutoBreak } from './calc.js';
+import { computeDay, groupByDay, calcAutoBreak, creditOf } from './calc.js';
 import { bookDay, bookingInterval } from './booking.js';
 import { DAY_TYPES } from './model.js';
 import { buildXlsx, STYLE } from './xlsx.js';
@@ -65,19 +65,29 @@ export function buildWeekReport({ weekStart, intervals = [], activities = [], da
     // Gebuchte Werte (Viertelstunden); automatische Pause nur, wenn ausdrücklich aktiviert
     const auto = b.bookedNetMin != null && settings.autoBreak?.enabled ? calcAutoBreak(b.bookedNetMin, b.bookedBreakMin, settings.autoBreak.rules) : 0;
     const booked = { items: b.items, bookedBreakMin: b.bookedBreakMin + auto };
-    const netMin = b.bookedNetMin == null ? 0 : Math.max(0, b.bookedNetMin - auto);
     const info = infoByDay.get(day);
+    // angerechnete Zeit (z. B. Urlaub 8:00) zählt als Netto-Arbeitszeit des Tages
+    const credit = creditOf(info);
+    const netMin = b.bookedNetMin == null ? 0 : Math.max(0, b.bookedNetMin - auto) + credit;
     const acts = (actsByDay.get(day) || []).sort((a, b) => a.createdAt - b.createdAt);
     const lines = [];
-    const times = workTimes(day, d, booked);
-    if (info?.dayType && info.dayType !== 'arbeit') lines.push({ text: DAY_TYPES[info.dayType]?.label || info.dayType, minutes: null, dept: '', info: true });
+    let times = workTimes(day, d, booked);
+    if (credit) {
+      const label = DAY_TYPES[info.dayType]?.label || 'Abwesenheit';
+      const credLines = info.creditStart && info.creditEnd ? [`${info.creditStart}–${info.creditEnd}`, label] : [`${label} ${fmtDuration(credit)}`];
+      times = times ? [...times, ...credLines] : credLines;
+    }
+    if (info?.dayType && info.dayType !== 'arbeit') {
+      const label = DAY_TYPES[info.dayType]?.label || info.dayType;
+      lines.push({ text: credit ? `${label} (${fmtDuration(credit)} Std. angerechnet)` : label, minutes: null, dept: '', info: true });
+    }
     for (const a of acts) {
       lines.push({ text: a.description ? `${a.title} – ${a.description}` : a.title, minutes: a.minutes, dept: a.category || '', info: false });
     }
     if (i === 6 && !lines.length && !times) continue; // Sonntag nur bei Einträgen
     // Stunden gesamt = Arbeitszeit + Pause (gebucht); erst nach Feierabend, sonst 0
     const breakMin = b.bookedNetMin == null ? 0 : booked.bookedBreakMin;
-    const worked = d.sessions.length > 0;
+    const worked = d.sessions.length > 0 || credit > 0;
     days.push({ day, label: WEEKDAYS_LONG[i], times, lines, netMin, breakMin, grossMin: netMin + breakMin, worked, minRows: MIN_ROWS[i] });
   }
   const report = settings.report || {};

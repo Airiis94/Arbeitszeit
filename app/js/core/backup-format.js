@@ -78,6 +78,8 @@ const VALIDATORS = {
     if (!isValidDayKey(r.day)) e.push(`${w}: ungültiger Tag`);
     if (r.dayType != null && !DAY_TYPES[r.dayType]) e.push(`${w}: unbekannte Tagesart`);
     if (r.targetOverrideMin != null && (!isInt(r.targetOverrideMin) || r.targetOverrideMin < 0)) e.push(`${w}: ungültiges Soll`);
+    if (r.creditMin != null && (!isInt(r.creditMin) || r.creditMin < 0 || r.creditMin > 1440)) e.push(`${w}: ungültige angerechnete Zeit`);
+    for (const f of ['creditStart', 'creditEnd']) if (r[f] != null && !/^\d{2}:\d{2}$/.test(r[f])) e.push(`${w}: ungültige Uhrzeit (${f})`);
   },
   activities(r, w, e) {
     if (!isValidDayKey(r.day)) e.push(`${w}: ungültiger Tag`);

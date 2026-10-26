@@ -19,6 +19,7 @@ const PRECACHE = [
   './js/core/booking.js',
   './js/core/calc.js',
   './js/core/csv.js',
+  './js/core/dice.js',
   './js/core/memory.js',
   './js/core/model.js',
   './js/core/nachweis.js',

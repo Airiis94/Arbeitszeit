@@ -3,10 +3,12 @@
 import { h, field, formDialog, toast } from './dom.js';
 import {
   localTimestamp, timeOfDay, dayKey, parseDuration, analyzeDuration, fmtHoursDecimal, fmtDuration, fmtDate, parseTime, todayKey, isValidDayKey,
+  addDays, weekdayIndex,
 } from '../core/time.js';
 import { newInterval, touch, DAY_TYPES, INTENSITIES } from '../core/model.js';
 import { stampChoices } from '../core/booking.js';
-import { activityTemplates, filterTemplates, templateMinutes, hideTemplate } from '../core/memory.js';
+import { activityTemplates, filterTemplates, templateMinutes, hideTemplate, memoryKey } from '../core/memory.js';
+import { activityStats, rollDay } from '../core/dice.js';
 import { ValidationError } from '../db/repo.js';
 
 const err = (msg) => new ValidationError([msg]);
@@ -232,19 +234,109 @@ export async function deleteIntervalFlow(app, rec) {
 
 // ---------- Tagesangaben ----------
 
-export function editDayInfoDialog(app, day, info) {
+/** „HH:MM“ + Minuten → „HH:MM“ (innerhalb des Tages) */
+function addToTime(hhmm, min) {
+  const t = parseTime(hhmm);
+  if (!t || min == null) return '';
+  const total = Math.min(23 * 60 + 59, t.h * 60 + t.min + min);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Felder „Von“, „Bis“, „Angerechnete Zeit“ (z. B. Urlaub 09:00–17:00 = 8:00 Std.): Von + Dauer ergibt
+ * Bis, ein geändertes Bis ergibt die Dauer.
+ */
+function creditFields(start, durationMin) {
+  const from = timeInput('creditStart', start || '');
+  const to = timeInput('creditEnd', start && durationMin ? addToTime(start, durationMin) : '');
+  const durF = durationField('Angerechnete Arbeitszeit', { name: 'creditDuration', value: durationMin ? fmtDuration(durationMin) : '', placeholder: 'z. B. 8:00', 'data-testid': 'credit-duration' },
+    'Zählt als Netto-Arbeitszeit (Woche, Ausbildungsnachweis) – das Zeitkonto ändert sich nicht.');
+  const syncEnd = () => {
+    const m = parseDuration(durF.input.value);
+    if (from.value && m > 0) to.value = addToTime(from.value, m);
+  };
+  from.addEventListener('change', syncEnd);
+  durF.input.addEventListener('input', syncEnd);
+  to.addEventListener('change', () => {
+    const a = parseTime(from.value);
+    const b = parseTime(to.value);
+    if (a && b && b.h * 60 + b.min > a.h * 60 + a.min) setDuration(durF.input, fmtDuration(b.h * 60 + b.min - (a.h * 60 + a.min)));
+  });
+  const box = h('div', { class: 'credit-box' }, h('div', { class: 'row-2' }, field('Von', from), field('Bis', to)), durF.field);
+  return box;
+}
+
+/** Angerechnete Zeit aus dem Formular lesen (leer = keine). */
+function readCredit(f) {
+  const raw = String(f.get('creditDuration') || '').trim();
+  const creditMin = raw ? parseDuration(raw) : null;
+  if (raw && !(creditMin > 0 && creditMin <= 24 * 60)) throw durationError(raw, '8:00 oder 8 Std.');
+  const st = f.get('creditStart');
+  const en = f.get('creditEnd');
+  return { creditMin: creditMin || null, creditStart: creditMin && parseTime(st) ? st : null, creditEnd: creditMin && parseTime(en) ? en : null };
+}
+
+export function editDayInfoDialog(app, day, info, { typicalMin = 480 } = {}) {
   return formDialog({
     title: `Tagesangaben – ${fmtDate(day)}`,
+    build: () => {
+      const sel = h('select', { name: 'dayType', class: 'input', 'data-testid': 'day-type' },
+        Object.entries(DAY_TYPES).map(([k, v]) => h('option', { value: k, selected: (info?.dayType || 'arbeit') === k }, v.label)));
+      const credit = creditFields(info?.creditStart || (info?.creditMin ? '' : '09:00'), info?.creditMin || null);
+      const hint = h('p', { class: 'muted small' }, 'Bei Urlaub (oder einer anderen Abwesenheit) die Zeit eintragen, die als Arbeitszeit gilt – z. B. 09:00 mit 8:00 Std.');
+      const box = h('div', null, hint, credit);
+      const update = () => {
+        box.hidden = sel.value === 'arbeit';
+        const dur = credit.querySelector('input[name=creditDuration]');
+        if (sel.value === 'urlaub' && !dur.value) setDuration(dur, fmtDuration(typicalMin));
+      };
+      sel.addEventListener('change', update);
+      update();
+      return [field('Tagesart', sel, 'Erscheint im Kalender und im Ausbildungsnachweis.'), box,
+        field('Notiz', h('textarea', { name: 'note', class: 'input', rows: 2, maxlength: 500 }, info?.note || ''))];
+    },
+    onSubmit: async (form) => {
+      const f = new FormData(form);
+      const dayType = f.get('dayType');
+      const credit = dayType === 'arbeit' ? { creditMin: null, creditStart: null, creditEnd: null } : readCredit(f);
+      await app.repo.saveDayInfo(day, { dayType, targetOverrideMin: null, note: f.get('note') || '', ...credit });
+      toast('Tagesangaben gespeichert.', { type: 'success' });
+    },
+  });
+}
+
+/**
+ * Urlaub für einen oder mehrere Tage eintragen (Montag–Freitag). Je Tag wird die angegebene Zeit als
+ * Arbeitszeit angerechnet; vorhandene Buchungen und Tätigkeiten bleiben unverändert.
+ */
+export function vacationDialog(app, fromDay, { typicalMin = 480, dayInfos = [] } = {}) {
+  return formDialog({
+    title: 'Urlaub eintragen',
+    submitText: 'Urlaub eintragen',
     build: () => [
-      field('Tagesart', h('select', { name: 'dayType', class: 'input' },
-        Object.entries(DAY_TYPES).map(([k, v]) => h('option', { value: k, selected: (info?.dayType || 'arbeit') === k }, v.label))),
-      'Erscheint im Kalender und im Ausbildungsnachweis.'),
-      field('Notiz', h('textarea', { name: 'note', class: 'input', rows: 2, maxlength: 500 }, info?.note || '')),
+      h('div', { class: 'row-2' },
+        field('Erster Tag', h('input', { type: 'date', name: 'from', class: 'input', value: fromDay, required: true, 'data-testid': 'vac-from' })),
+        field('Letzter Tag', h('input', { type: 'date', name: 'to', class: 'input', value: fromDay, required: true, 'data-testid': 'vac-to' }), 'Samstage und Sonntage werden übersprungen.')),
+      creditFields('09:00', typicalMin),
+      field('Notiz (optional)', h('input', { type: 'text', name: 'note', class: 'input', maxlength: 200, placeholder: 'z. B. Sommerurlaub' })),
     ],
     onSubmit: async (form) => {
       const f = new FormData(form);
-      await app.repo.saveDayInfo(day, { dayType: f.get('dayType'), targetOverrideMin: null, note: f.get('note') || '' });
-      toast('Tagesangaben gespeichert.', { type: 'success' });
+      const from = f.get('from');
+      const to = f.get('to') || from;
+      if (!isValidDayKey(from) || !isValidDayKey(to) || to < from) throw err('Bitte einen gültigen Zeitraum wählen (letzter Tag nach dem ersten).');
+      const credit = readCredit(f);
+      if (!credit.creditMin) throw err('Bitte die anzurechnende Zeit angeben (z. B. 8:00).');
+      const days = [];
+      for (let d = from; d <= to && days.length < 62; d = addDays(d, 1)) if (weekdayIndex(d) < 5) days.push(d);
+      if (!days.length) throw err('Im gewählten Zeitraum liegt kein Werktag (Montag–Freitag).');
+      const note = String(f.get('note') || '').trim();
+      for (const d of days) {
+        const old = dayInfos.find((x) => x.day === d && !x.deleted);
+        await app.repo.saveDayInfo(d, { dayType: 'urlaub', targetOverrideMin: null, note: note || old?.note || '', ...credit });
+      }
+      toast(days.length === 1 ? `Urlaub am ${fmtDate(days[0])} eingetragen (${fmtDuration(credit.creditMin)} Std.).`
+        : `Urlaub an ${days.length} Tagen eingetragen (${fmtDate(days[0], { year: false })} – ${fmtDate(days[days.length - 1], { year: false })}, je ${fmtDuration(credit.creditMin)} Std.).`, { type: 'success', timeout: 7000 });
     },
   });
 }
@@ -402,6 +494,58 @@ export function quickActivityDialog(app, day, title = '', { openMin = 0, templat
       });
       onSaved?.();
       undoToast(app, `„${known ? known.title : name}“ (${fmtDuration(minutes)}) gespeichert.`, res.changes);
+    },
+  });
+}
+
+/**
+ * „Tag würfeln“: Vorschlag aus der eigenen Statistik (letzte 8 Wochen), der genau die offene Zeit füllt.
+ * Neu würfeln beliebig oft; gespeichert wird erst mit „Übernehmen“ – vorhandene Tätigkeiten bleiben.
+ */
+export function diceDialog(app, day, { activities, openMin }) {
+  const stats = activityStats(activities, day, { weeks: 8 });
+  const existing = activities.filter((a) => !a.deleted && a.day === day);
+  const exclude = existing.map((a) => memoryKey(a));
+  let proposal = [];
+  const roll = () => {
+    proposal = rollDay(stats, openMin, { exclude });
+    if (!proposal.length) proposal = rollDay(stats, openMin); // alle bekannten schon an dem Tag erfasst
+  };
+  roll();
+  const list = h('ul', { class: 'dice-list', 'data-testid': 'dice-list' });
+  const render = () => {
+    list.replaceChildren(...proposal.map((p) => h('li', null,
+      h('div', { class: 'dice-body' },
+        h('b', null, p.title),
+        h('div', { class: 'muted small' }, [p.category, `an ${Math.round(p.share * 100)} % der Tage`, `üblich ${fmtDuration(Math.round(p.typical))}`].filter(Boolean).join(' · '))),
+      h('span', { class: 'dice-dur' }, fmtDuration(p.minutes)))));
+  };
+  render();
+  return formDialog({
+    title: `${existing.length ? 'Rest des Tages' : 'Tag'} würfeln – ${fmtDate(day, { year: false })}`,
+    submitText: 'Übernehmen',
+    build: () => {
+      if (!stats.templates.length) {
+        return [h('p', null, 'Es gibt noch keine erfassten Tätigkeiten aus den letzten 8 Wochen. Bitte zuerst einige Tage selbst eintragen – daraus lernt die Würfelfunktion, welche Tätigkeiten wie oft und wie lange vorkommen.')];
+      }
+      return [
+        h('p', { class: 'small' }, `Zu vergeben: `, h('b', null, `${fmtDuration(openMin)} Std.`),
+          existing.length ? ` (bereits erfasst: ${existing.length} Tätigkeit${existing.length === 1 ? '' : 'en'} – bleiben unverändert)` : ''),
+        list,
+        h('div', { class: 'dice-sum' }, h('span', null, 'Summe'), h('b', { 'data-testid': 'dice-sum' }, fmtDuration(openMin))),
+        h('button', { type: 'button', class: 'btn btn-block', 'data-testid': 'dice-reroll', onclick: () => { roll(); render(); } }, '🎲 Neu würfeln'),
+        h('p', { class: 'muted small' }, `Grundlage: ${stats.days} Tag${stats.days === 1 ? '' : 'e'} mit Tätigkeiten aus den letzten 8 Wochen. Häufige Tätigkeiten kommen öfter vor, die Dauern orientieren sich an deinen Eingaben.`,
+          stats.days < 5 ? ' Noch wenige Tage erfasst – der Vorschlag wird mit der Zeit genauer.' : ''),
+      ];
+    },
+    onSubmit: async () => {
+      if (!proposal.length) throw err('Kein Vorschlag vorhanden.');
+      const changes = [];
+      for (const p of proposal) {
+        const res = await app.repo.saveActivity({ day, title: p.title, description: p.description || '', minutes: p.minutes, intensity: p.intensity || null, category: p.category || null });
+        changes.push(...(res.changes || []));
+      }
+      undoToast(app, `${proposal.length} Tätigkeit${proposal.length === 1 ? '' : 'en'} übernommen (${fmtDuration(openMin)} Std.).`, changes);
     },
   });
 }

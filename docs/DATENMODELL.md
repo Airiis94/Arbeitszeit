@@ -38,7 +38,9 @@ Arbeitsphase geben; das wird innerhalb der Schreibtransaktion geprüft.
 
 ### `dayInfos` – Angaben je Tag
 
-`day`, `dayType` (`arbeit`, `urlaub`, `krank`, `feiertag`, `frei`, `ausgleich`),
+`day`, `dayType` (`arbeit`, `urlaub`, `krank`, `feiertag`, `frei`, `ausgleich`, `schule`), optional
+`creditMin` (als Arbeitszeit angerechnete Minuten, z. B. Urlaub 480), `creditStart`/`creditEnd` („09:00“/„17:00“,
+nur zur Anzeige) – fehlen die Felder (ältere Daten), wird nichts angerechnet;
 `targetOverrideMin` (aus Version 1.0, nicht mehr verwendet), `note`.
 
 ### `activities` – Tätigkeitsprotokoll (Index: `day`)

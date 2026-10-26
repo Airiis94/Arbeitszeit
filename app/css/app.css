@@ -808,3 +808,14 @@ textarea.input { min-height: 80px; resize: vertical; }
 
 /* Zeitkonto-Verlauf: Übertrag und Stand */
 .ledger-carry td { font-weight: 700; background: var(--surface-2); }
+
+/* Tätigkeiten würfeln */
+.act-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.act-buttons .btn { flex: 1 1 140px; }
+.btn-dice { border: 1.5px solid var(--primary); color: var(--primary); background: var(--info-bg); font-weight: 800; }
+.dice-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dice-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.dice-body { min-width: 0; overflow-wrap: anywhere; }
+.dice-dur { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; flex: none; }
+.dice-sum { display: flex; justify-content: space-between; padding: 4px 10px 8px; font-weight: 700; }
+.credit-box { display: flex; flex-direction: column; }

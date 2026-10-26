@@ -1,7 +1,8 @@
 // Kalender: Monats- und Wochenansicht mit Zusammenfassung. Antippen eines Tages öffnet die Tagesansicht.
 
 import { h } from './dom.js';
-import { computeAccount, dayRow, summarize, periodBalance, STATUS_LABELS } from '../core/calc.js';
+import { computeAccount, dayRow, summarize, periodBalance, typicalNetMin, STATUS_LABELS } from '../core/calc.js';
+import { vacationDialog } from './editors.js';
 import {
   fmtDuration, fmtDate, fmtMonth, addDays, addMonths, todayKey, monthKey, firstOfMonth, lastOfMonth,
   startOfWeek, weekdayIndex, isoWeek, WEEKDAYS_SHORT, isValidDayKey,
@@ -31,6 +32,7 @@ function summaryCard(title, rows, pb, prevLabel) {
     h('div', { class: 'summary-grid' },
       h('div', { class: 'sum-main' }, h('span', null, 'Arbeitszeit (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedNetMin))),
       h('div', null, h('span', null, 'davon gestempelt'), h('b', { class: 'num' }, fmtDuration(s.netMin))),
+      s.creditMin ? h('div', { 'data-testid': 'credit-sum' }, h('span', null, 'davon Urlaub/angerechnet'), h('b', { class: 'num' }, fmtDuration(s.creditMin))) : null,
       h('div', null, h('span', null, 'Pausen (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedBreakMin))),
       h('div', null, h('span', null, 'Arbeitstage'), h('b', { class: 'num' }, String(s.workedDays))),
       pb ? [
@@ -67,7 +69,7 @@ function monthView(app, mk, data, acc, now, today) {
     const dayNum = Number(r.day.slice(8));
     cells.push(h('a', { class: cellClass(r, today), href: `#/tag/${r.day}`, 'aria-label': fmtDate(r.day) },
       h('span', { class: 'cal-num' }, String(dayNum)),
-      r.status !== 'empty' ? h('span', { class: 'cal-net num' }, fmtDuration(r.bookedNetMin ?? r.netMin)) : null,
+      r.status !== 'empty' || r.creditMin ? h('span', { class: 'cal-net num' }, fmtDuration(r.bookedNetMin ?? r.netMin)) : null,
       r.effect ? h('span', { class: `cal-diff num ${r.effect > 0 ? 'pos' : 'neg'}` }, fmtDuration(r.effect, { sign: true })) : null,
       r.status === 'empty' && r.dayType && r.dayType !== 'arbeit' ? h('span', { class: 'cal-type' }, DAY_TYPES[r.dayType]?.label.slice(0, 6)) : null));
   }
@@ -103,7 +105,7 @@ function weekView(app, weekStart, data, acc, now, today) {
       h('td', { class: 'num' }, timeOrDash(r.bookedFirst)),
       h('td', { class: 'num' }, r.status === 'running' ? 'läuft' : timeOrDash(r.bookedLast)),
       h('td', { class: 'num' }, r.status === 'empty' ? '' : fmtDuration(r.bookedBreakMin)),
-      h('td', { class: 'num' }, r.status === 'empty' ? '' : r.bookedNetMin == null ? statusBadge(r.status) : fmtDuration(r.bookedNetMin)),
+      h('td', { class: 'num' }, r.status === 'empty' && !r.creditMin ? '' : r.bookedNetMin == null ? statusBadge(r.status) : fmtDuration(r.bookedNetMin)),
       h('td', null, r.status === 'empty' ? '' : signed(r.effect)),
       h('td', null, r.balance == null ? '' : signed(r.balance)))))),
     ),
@@ -113,7 +115,11 @@ function weekView(app, weekStart, data, acc, now, today) {
       h('button', {
         type: 'button', class: 'btn btn-block', 'data-testid': 'week-report', onclick: () => exportReport(app, data, weekStart, to).catch(app.error),
       }, '⬇ Ausbildungsnachweis dieser Woche (Excel)'),
-      h('a', { class: 'btn btn-block', href: `#/druck/woche/${weekStart}`, 'data-testid': 'week-print' }, '🖨 Wochentabelle drucken / als PDF')),
+      h('a', { class: 'btn btn-block', href: `#/druck/woche/${weekStart}`, 'data-testid': 'week-print' }, '🖨 Wochentabelle drucken / als PDF'),
+      h('button', {
+        type: 'button', class: 'btn btn-block', 'data-testid': 'week-vacation',
+        onclick: () => vacationDialog(app, weekStart <= today && today <= to ? today : weekStart, { typicalMin: typicalNetMin(acc), dayInfos: data.dayInfos }),
+      }, '🏖 Urlaub eintragen')),
   ];
 }
 

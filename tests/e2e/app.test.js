@@ -389,6 +389,94 @@ test('Tätigkeiten Wochen später ergänzen: 0,5 = 30 min, „1“ wird nachgefr
   assert.equal(await page.$('[data-testid=open-days]'), null);
 });
 
+test('Tag würfeln: Rest der Netto-Arbeitszeit aus der eigenen Statistik füllen, eigene Einträge bleiben', async () => {
+  // Statistik: 3 Wochen mit „Versenden“ (täglich) und „Patch löten“ (jeden 2. Tag)
+  await page.evaluate(async () => {
+    const r = window.__app.repo;
+    const { addDays } = await import('./js/core/time.js');
+    let i = 0;
+    for (let d = '2026-02-09'; d < '2026-03-02'; d = addDays(d, 1)) {
+      const wd = new Date(`${d}T12:00:00`).getDay();
+      if (wd === 0 || wd === 6) continue;
+      await r.saveActivity({ day: d, title: 'Versenden', minutes: 180, intensity: null, category: 'Versand', description: '' });
+      await r.saveActivity({ day: d, title: i % 2 ? 'Kommissionieren' : 'Patch löten', minutes: 300, intensity: null, category: 'Werkstatt', description: '' });
+      i += 1;
+    }
+  });
+  await workday(); // 02.03.: 8:15 netto
+  await page.goto(`${base}#/taetigkeiten/${DAY}`);
+  // eigene neue Tätigkeit, der Rest wird gewürfelt
+  await click('add-activity');
+  await page.fill('dialog input[name=title]', 'Besichtigung Versandlager');
+  await page.fill('dialog input[name=duration]', '1:00');
+  await page.click('dialog button[type=submit]');
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('Noch 7:15'));
+  await click('dice-day');
+  await page.waitForSelector('[data-testid=dice-list] li');
+  assert.match(await page.textContent('dialog'), /Rest des Tages würfeln/);
+  assert.equal(await text('dice-sum'), '7:15');
+  const durations = async () => page.$$eval('[data-testid=dice-list] .dice-dur', (els) => els.map((e) => e.textContent));
+  const toMin = (x) => { const [hh, mm] = x.split(':').map(Number); return hh * 60 + mm; };
+  for (let k = 0; k < 5; k += 1) {
+    const ds = await durations();
+    assert.equal(ds.map(toMin).reduce((a, b) => a + b, 0), 435, ds.join(' + '));
+    await click('dice-reroll');
+  }
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('entsprechen genau'));
+  const acts = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.filter((a) => a.day === '2026-03-02'));
+  assert.ok(acts.some((a) => a.title === 'Besichtigung Versandlager' && a.minutes === 60), 'eigener Eintrag bleibt');
+  assert.equal(acts.reduce((x, a) => x + a.minutes, 0), 495);
+  assert.ok(acts.filter((a) => a.title !== 'Besichtigung Versandlager').every((a) => ['Versenden', 'Patch löten', 'Kommissionieren'].includes(a.title)));
+  assert.equal(await page.$('[data-testid=dice-day]'), null); // nichts mehr offen
+  // „Rückgängig“ entfernt nur die gewürfelten Einträge
+  await page.click('.toast:has-text("übernommen") .toast-action');
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('Noch 7:15'));
+  const after = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.filter((a) => a.day === '2026-03-02').map((a) => a.title));
+  assert.deepEqual(after, ['Besichtigung Versandlager']);
+});
+
+test('Urlaub eintragen: zählt als Netto-Arbeitszeit der Woche, Zeitkonto unverändert, Wochenende übersprungen', async () => {
+  await workday(); // Mo 02.03.: 8:15 netto, Gehen 16:40 → 16:45 = −0:05
+  await page.goto(`${base}#/konto`);
+  await page.waitForSelector('[data-testid=account-balance]');
+  const balance = await text('account-balance');
+  await page.goto(`${base}#/kalender/woche/${DAY}`);
+  await click('week-vacation');
+  await page.fill('dialog [data-testid=vac-from]', '2026-03-03');
+  await page.fill('dialog [data-testid=vac-to]', '2026-03-08'); // Di–So
+  await page.fill('dialog input[name=creditStart]', '09:00');
+  await page.fill('dialog [data-testid=credit-duration]', '8:00');
+  assert.equal(await page.inputValue('dialog input[name=creditEnd]'), '17:00');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await page.waitForSelector('[data-testid=credit-sum]');
+  assert.match(await text('credit-sum'), /32:00/); // Di–Fr je 8:00
+  const infos = await page.evaluate(async () => (await window.__app.repo.loadAll()).dayInfos.map((d) => [d.day, d.dayType, d.creditMin, d.creditStart, d.creditEnd]).sort());
+  assert.deepEqual(infos, ['03', '04', '05', '06'].map((d) => [`2026-03-${d}`, 'urlaub', 480, '09:00', '17:00']));
+  // Ausbildungsnachweis: Woche 8:15 + 4 × 8:00
+  const rep = await page.evaluate(async () => {
+    const { buildWeekReport } = await import('./js/core/nachweis.js');
+    const d = await window.__app.repo.loadAll();
+    const r = buildWeekReport({ weekStart: '2026-03-02', ...d, now: Date.now() });
+    return { total: r.totalMin, tue: r.days[1].times };
+  });
+  assert.equal(rep.total, 495 + 4 * 480);
+  assert.deepEqual(rep.tue, ['09:00–17:00', 'Urlaub']);
+  // Zeitkonto unverändert, Tagesansicht zeigt die Anrechnung
+  await page.goto(`${base}#/konto`);
+  await page.waitForSelector('[data-testid=account-balance]');
+  assert.equal(await text('account-balance'), balance);
+  await page.goto(`${base}#/tag/2026-03-04`);
+  await page.waitForSelector('[data-testid=credit-info]');
+  assert.match(await text('credit-info'), /8:00 Std\. als Arbeitszeit angerechnet \(09:00–17:00\)/);
+  // Urlaubstag braucht keine Tätigkeiten
+  await page.goto(`${base}#/taetigkeiten/2026-03-04`);
+  await page.waitForSelector('[data-testid=add-activity]');
+  assert.equal(await page.$('[data-testid=activity-check]'), null);
+});
+
 test('Korrektur mit Begründung verändert den Saldo', async () => {
   await workday();
   await page.goto(`${base}#/konto`);

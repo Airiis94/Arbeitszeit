@@ -76,6 +76,13 @@ Das wird automatisch geprüft (auch mit Zufallsdaten).
 - Unvollständige oder fehlerhafte Tage (z. B. Feierabend vergessen) werden als Warnung gemeldet;
   ihre bereits vorhandenen Stempel zählen trotzdem.
 
+## Urlaub und angerechnete Zeit
+
+Bei einer Abwesenheit (z. B. Urlaub) kann eine Zeit angerechnet werden (`creditMin`, z. B. 8:00 Std.).
+Sie zählt zur Netto-Arbeitszeit des Tages und der Woche sowie im Ausbildungsnachweis (Stunden netto),
+verlangt keine Tätigkeiten und verändert das Zeitkonto nicht – es enthält weiterhin nur Differenzminuten
+der Stempel und Korrekturen.
+
 ## Ausgleichen
 
 „**Ausgleichen: gehen um …**“ auf *Heute* schlägt die nächste Gehzeit vor, mit der das Konto

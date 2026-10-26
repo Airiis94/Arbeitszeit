@@ -34,7 +34,7 @@ export function daysToCsv(rows) {
     timeOfDay(r.bookedFirst),
     timeOfDay(r.bookedLast),
     r.status === 'empty' ? '' : dur(r.bookedBreakMin),
-    r.bookedNetMin == null || r.status === 'empty' ? '' : dur(r.bookedNetMin),
+    r.bookedNetMin == null || (r.status === 'empty' && !r.creditMin) ? '' : dur(r.bookedNetMin),
     r.bookedNetMin ?? '',
     timeOfDay(r.firstStart),
     timeOfDay(r.lastEnd),

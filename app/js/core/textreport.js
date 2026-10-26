@@ -104,6 +104,7 @@ export function buildTextBackup({ data, backup, now = Date.now() }) {
     const type = info?.dayType && info.dayType !== 'arbeit' ? ` · ${DAY_TYPES[info.dayType]?.label || info.dayType}` : '';
     const status = row.status !== 'complete' && row.status !== 'empty' ? ` · ${STATUS_LABELS[row.status]}` : '';
     out.push(`${fmtDate(day)}${type}${status}`);
+    if (row.creditMin) out.push(`  ${DAY_TYPES[info.dayType]?.label || 'Abwesenheit'} angerechnet: ${fmtDuration(row.creditMin)}${info.creditStart && info.creditEnd ? ` (${info.creditStart}–${info.creditEnd})` : ''}`);
     for (const r of rangeText(booking.items, 'work', day)) out.push(`  Arbeit: ${r}`);
     for (const r of rangeText(booking.items, 'break', day)) out.push(`  Pause:  ${r}`);
     for (const it of booking.items.filter((x) => x.rec.kind === 'break' && x.rec.start == null)) {

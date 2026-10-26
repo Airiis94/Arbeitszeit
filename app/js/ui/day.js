@@ -1,7 +1,7 @@
 // Tagesansicht: Buchungen bearbeiten und Berechnung nachvollziehen.
 
 import { h } from './dom.js';
-import { computeDay, computeAccount, dayRow, activityCheck } from '../core/calc.js';
+import { computeDay, computeAccount, dayRow, activityCheck, typicalNetMin } from '../core/calc.js';
 import { bookDay, bookingInterval } from '../core/booking.js';
 import {
   fmtDuration, fmtDate, addDays, todayKey, isValidDayKey, fmtDateTime, timeOfDay,
@@ -9,7 +9,7 @@ import {
 import { DAY_TYPES } from '../core/model.js';
 import { signed, entryList, statusBadge, issueList, timeOrDash, stampText } from './common.js';
 import {
-  editWorkDialog, editBreakDialog, deleteIntervalFlow, editDayInfoDialog, quickBreak, chooseBookingDialog,
+  editWorkDialog, editBreakDialog, deleteIntervalFlow, editDayInfoDialog, vacationDialog, quickBreak, chooseBookingDialog,
 } from './editors.js';
 
 const AUDIT_ACTIONS = { create: 'angelegt', update: 'geändert', delete: 'gelöscht', undo: 'rückgängig gemacht' };
@@ -99,8 +99,14 @@ export async function renderDay(app, params) {
     h('div', { class: 'card' },
       h('div', { class: 'card-head' },
         h('h2', null, 'Tagesangaben'),
-        h('button', { type: 'button', class: 'btn btn-small', onclick: () => editDayInfoDialog(app, day, info) }, 'Bearbeiten')),
+        h('button', { type: 'button', class: 'btn btn-small', 'data-testid': 'day-info-edit', onclick: () => editDayInfoDialog(app, day, info, { typicalMin: typicalNetMin(acc) }) }, 'Bearbeiten')),
       h('p', null, `Tagesart: ${(DAY_TYPES[info?.dayType || 'arbeit'] || DAY_TYPES.arbeit).label}`),
+      row.creditMin ? h('p', { 'data-testid': 'credit-info' }, h('b', null, `${fmtDuration(row.creditMin)} Std. als Arbeitszeit angerechnet`),
+        info.creditStart && info.creditEnd ? ` (${info.creditStart}–${info.creditEnd})` : '', h('span', { class: 'muted small' }, ' – zählt zur Netto-Arbeitszeit, nicht zum Zeitkonto.')) : null,
+      info?.dayType !== 'urlaub' ? h('button', {
+        type: 'button', class: 'btn btn-small', 'data-testid': 'vacation-add',
+        onclick: () => vacationDialog(app, day, { typicalMin: typicalNetMin(acc), dayInfos: data.dayInfos }),
+      }, '🏖 Urlaub eintragen') : null,
       info?.note ? h('p', { class: 'note' }, info.note) : null),
     h('div', { class: 'card' },
       h('div', { class: 'card-head' },

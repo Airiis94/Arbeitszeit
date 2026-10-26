@@ -249,12 +249,34 @@ export function periodBalance(acc, from, to) {
   return { carryIn, change, end: carryIn + change, counted: inRange.length };
 }
 
+/**
+ * Angerechnete Arbeitszeit eines Tages (z. B. Urlaub mit 8:00 Std.): gilt als Netto-Arbeitszeit für Tag,
+ * Woche und Ausbildungsnachweis, verändert aber das Zeitkonto nicht (keine Stempel, keine Differenz).
+ * Nur bei einer Tagesart außer „Arbeitstag“; fehlt das Feld (ältere Daten), ist es 0.
+ */
+export function creditOf(info) {
+  if (!info || info.deleted || !info.dayType || info.dayType === 'arbeit') return 0;
+  const m = info.creditMin;
+  return Number.isInteger(m) && m > 0 ? Math.min(m, 24 * 60) : 0;
+}
+
+/** Übliche Netto-Arbeitszeit eines Arbeitstages (Median der letzten 4 Wochen) – Vorschlag für Urlaub. */
+export function typicalNetMin(acc, fallback = 480) {
+  const from = acc.rows.length ? addDays(acc.rows[acc.rows.length - 1].day, -28) : '';
+  const xs = acc.rows.filter((r) => r.day >= from && r.status === 'complete' && !r.creditMin && r.bookedNetMin > 0)
+    .map((r) => r.bookedNetMin).sort((a, b) => a - b);
+  if (!xs.length) return fallback;
+  const m = xs[Math.floor(xs.length / 2)];
+  return Math.round(m / 15) * 15 || fallback;
+}
+
 /** Kennzahlen eines Tages: gestempelt (minutengenau) und gebucht (Raster) samt Kontowirkung. */
 export function dayRow(day, intervals, info, settings, now = Date.now(), interval = bookingInterval(settings)) {
   const d = computeDay(intervals, { now, autoBreak: settings.autoBreak });
   const b = bookDay(intervals, interval);
   const autoBooked = b.bookedNetMin != null && settings.autoBreak?.enabled
     ? calcAutoBreak(b.bookedNetMin, b.bookedBreakMin, settings.autoBreak.rules) : 0;
+  const credit = creditOf(info);
   return {
     day,
     status: d.status,
@@ -270,7 +292,9 @@ export function dayRow(day, intervals, info, settings, now = Date.now(), interva
     bookedFirst: b.firstBooked,
     bookedLast: b.lastBooked,
     bookedBreakMin: b.bookedBreakMin + autoBooked,
-    bookedNetMin: b.bookedNetMin == null ? null : Math.max(0, b.bookedNetMin - autoBooked),
+    // Netto-Arbeitszeit inkl. angerechneter Zeit (z. B. Urlaub); das Zeitkonto bleibt davon unberührt
+    bookedNetMin: b.bookedNetMin == null ? null : Math.max(0, b.bookedNetMin - autoBooked) + credit,
+    creditMin: credit,
     stamps: b.stamps,
     effect: b.effect,
     correction: 0,
@@ -280,11 +304,12 @@ export function dayRow(day, intervals, info, settings, now = Date.now(), interva
 
 /** Summen über einen Zeitraum (z. B. Woche/Monat). */
 export function summarize(rows) {
-  const s = { days: 0, workedDays: 0, netMin: 0, bookedNetMin: 0, breakMin: 0, bookedBreakMin: 0, effect: 0, open: 0 };
+  const s = { days: 0, workedDays: 0, netMin: 0, bookedNetMin: 0, breakMin: 0, bookedBreakMin: 0, effect: 0, open: 0, creditMin: 0 };
   for (const r of rows) {
     s.days += 1;
     s.netMin += r.netMin || 0;
     s.bookedNetMin += r.bookedNetMin || 0;
+    s.creditMin += r.creditMin || 0;
     s.breakMin += (r.breakMin || 0) + (r.autoBreakMin || 0);
     s.bookedBreakMin += r.bookedBreakMin || 0;
     s.effect += (r.effect || 0) + (r.correction || 0);
@@ -301,7 +326,8 @@ export function summarize(rows) {
  */
 export function activityCheck(row, activities) {
   const running = row.bookedNetMin == null;
-  const target = running ? row.netMin : row.bookedNetMin;
+  // angerechnete Zeit (Urlaub …) braucht keine Tätigkeiten
+  const target = running ? row.netMin : Math.max(0, row.bookedNetMin - (row.creditMin || 0));
   const sum = activities.filter((a) => !a.deleted && a.day === row.day).reduce((s, a) => s + a.minutes, 0);
   return { target, sum, gap: target - sum, running };
 }
