@@ -1,6 +1,7 @@
 // „Tag würfeln“: Tätigkeiten eines Tages aus der eigenen Statistik vorschlagen.
-// Grundlage sind die erfassten Tätigkeiten der letzten Wochen: Wie oft kommt eine Tätigkeit vor
-// (Anteil der Tage) und wie lange dauert sie üblicherweise. Gewürfelt wird nach dieser Wahrscheinlichkeit,
+// Grundlage sind nur selbst eingetragene Tätigkeiten (gewürfelte tragen source: 'dice' und zählen nicht):
+// Wie oft kommt eine Tätigkeit vor (Anteil der Tage) und wie lange dauert sie üblicherweise. Welche
+// Tätigkeiten gewürfelt werden dürfen und welcher Zeitraum zählt, steht in den Einstellungen. Gewürfelt wird nach dieser Wahrscheinlichkeit,
 // die Dauern orientieren sich an den bisherigen Eingaben und füllen zusammen genau die offene Zeit.
 // Es wird nur ein Vorschlag erzeugt – gespeichert wird erst nach Bestätigung, vorhandene Einträge bleiben.
 
@@ -14,13 +15,18 @@ const median = (xs) => {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
 
+/** Selbst eingetragen (nicht gewürfelt) und gültig. */
+export const isManual = (a) => !a.deleted && a.source !== 'dice' && a.minutes > 0 && !!String(a.title || '').trim();
+
 /**
- * Statistik der Tätigkeiten im Zeitraum [day − weeks Wochen, day).
+ * Statistik der selbst eingetragenen Tätigkeiten – ohne den Tag selbst. weeks = 0: gesamter Zeitraum,
+ * sonst die `weeks` Wochen vor dem Tag. `excluded`: Schlüssel, die nicht gewürfelt werden sollen.
  * @returns {{ days, templates: [{ key, title, description, category, intensity, daysWith, share, durations, typical }], itemsPerDay, minutesPerDay }}
  */
-export function activityStats(activities, day, { weeks = 8 } = {}) {
-  const from = addDays(day, -weeks * 7);
-  const live = activities.filter((a) => !a.deleted && a.day >= from && a.day < day && a.minutes > 0 && String(a.title || '').trim());
+export function activityStats(activities, day, { weeks = 0, excluded = [] } = {}) {
+  const from = weeks > 0 ? addDays(day, -weeks * 7) : '';
+  const until = weeks > 0 ? day : '9999-12-31';
+  const live = activities.filter((a) => isManual(a) && a.day !== day && a.day >= from && a.day < until);
   const byDay = new Map();
   for (const a of live) {
     if (!byDay.has(a.day)) byDay.set(a.day, []);
@@ -43,13 +49,20 @@ export function activityStats(activities, day, { weeks = 8 } = {}) {
       }
     }
   }
-  const templates = [...byKey.values()].map((t) => ({
+  const skip = new Set(excluded);
+  const templates = [...byKey.values()].filter((t) => !skip.has(t.key)).map((t) => ({
     key: t.key, title: t.title, description: t.description, category: t.category, intensity: t.intensity,
     daysWith: t.dayset.size, share: days ? t.dayset.size / days : 0, durations: t.durations, typical: median(t.durations),
   })).sort((a, b) => b.daysWith - a.daysWith || a.title.localeCompare(b.title));
   const counts = [...byDay.values()].map((l) => l.length);
   const sums = [...byDay.values()].map((l) => l.reduce((s, a) => s + a.minutes, 0));
   return { days, templates, itemsPerDay: median(counts), minutesPerDay: median(sums) };
+}
+
+/** Alle selbst eingetragenen Tätigkeiten als Auswahl für die Würfel-Einstellungen (häufigste zuerst). */
+export function diceCandidates(activities, excluded = []) {
+  const skip = new Set(excluded);
+  return activityStats(activities, '', { weeks: 0 }).templates.map((t) => ({ key: t.key, title: t.title, category: t.category, daysWith: t.daysWith, included: !skip.has(t.key) }));
 }
 
 /** Gewichtete Auswahl ohne Zurücklegen. */
@@ -112,4 +125,18 @@ export function rollDay(stats, openMin, { exclude = [], step = 15, rng = Math.ra
     }
   }
   return out;
+}
+
+/**
+ * Neu würfeln mit festgehaltenen („gelockten“) Tätigkeiten: Diese bleiben unverändert, nur die übrige
+ * Zeit wird neu gewürfelt – ohne die gelockten (und an dem Tag schon erfassten) Tätigkeiten doppelt zu ziehen.
+ * @param locked [{ key, minutes, … }]
+ */
+export function rerollDay(stats, openMin, locked = [], { exclude = [], ...opts } = {}) {
+  const rest = openMin - locked.reduce((s, x) => s + x.minutes, 0);
+  if (rest <= 0) return locked.map((x) => ({ ...x, locked: true }));
+  const lockedKeys = locked.map((x) => x.key);
+  let more = rollDay(stats, rest, { ...opts, exclude: [...exclude, ...lockedKeys] });
+  if (!more.length) more = rollDay(stats, rest, { ...opts, exclude: lockedKeys }); // alles schon am Tag erfasst
+  return [...locked.map((x) => ({ ...x, locked: true })), ...more.map((x) => ({ ...x, locked: false }))];
 }

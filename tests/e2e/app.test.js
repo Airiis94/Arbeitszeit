@@ -437,6 +437,84 @@ test('Tag würfeln: Rest der Netto-Arbeitszeit aus der eigenen Statistik füllen
   assert.deepEqual(after, ['Besichtigung Versandlager']);
 });
 
+/** Wartet, bis die gespeicherten Einstellungen die Bedingung erfüllen (waitForFunction kann nicht auf Promises warten). */
+async function pollSettings(ok) {
+  let s;
+  for (let k = 0; k < 50; k += 1) {
+    s = await page.evaluate(async () => (await window.__app.repo.loadAll()).settings);
+    if (ok(s)) return s;
+    await page.waitForTimeout(50);
+  }
+  throw new Error(`Einstellungen nicht wie erwartet: ${JSON.stringify(s)}`);
+}
+
+test('Tag würfeln: festhalten, Auswahl, gewürfelte zählen nicht zur Statistik', async () => {
+  await page.evaluate(async () => {
+    const r = window.__app.repo;
+    const { addDays } = await import('./js/core/time.js');
+    let i = 0;
+    for (let d = '2026-02-09'; d < '2026-03-02'; d = addDays(d, 1)) {
+      const wd = new Date(`${d}T12:00:00`).getDay();
+      if (wd === 0 || wd === 6) continue;
+      await r.saveActivity({ day: d, title: 'Versenden', minutes: 120, intensity: null, category: 'Versand', description: '' });
+      await r.saveActivity({ day: d, title: i % 2 ? 'Kommissionieren' : 'Patch löten', minutes: 240, intensity: null, category: 'Werkstatt', description: '' });
+      await r.saveActivity({ day: d, title: 'Prüfen', minutes: 120, intensity: null, category: 'Werkstatt', description: '' });
+      // früher gewürfelt – darf nicht in die Statistik
+      await r.saveActivity({ day: d, title: 'Nur gewürfelt', minutes: 15, intensity: null, category: null, description: '', source: 'dice' });
+      i += 1;
+    }
+  });
+  await workday(); // 02.03.: 8:15 netto
+  await page.goto(`${base}#/taetigkeiten/${DAY}`);
+  await click('dice-day');
+  await page.waitForSelector('[data-testid=dice-list] li');
+  const items = async () => page.$$eval('[data-testid=dice-list] li', (els) => els.map((e) => ({
+    title: e.querySelector('b').textContent, dur: e.querySelector('.dice-dur').textContent,
+    locked: e.querySelector('[data-testid=dice-lock]').getAttribute('aria-pressed') === 'true',
+  })));
+  const toMin = (x) => { const [hh, mm] = x.split(':').map(Number); return hh * 60 + mm; };
+  // Auswahl im Fenster: gewürfelte Tätigkeiten stehen nicht zur Wahl; „Kommissionieren“ ausschließen
+  await page.click('[data-testid=dice-picker] summary');
+  const chips = await page.$$eval('[data-testid=dice-pick]', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(chips.sort(), ['Kommissionieren', 'Patch löten', 'Prüfen', 'Versenden']);
+  await page.click('[data-testid=dice-pick]:has-text("Kommissionieren")');
+  await pollSettings((s) => (s.diceExcluded || []).length === 1);
+  assert.match(await page.textContent('[data-testid=dice-picker] summary'), /3 von 4/);
+  // erste Tätigkeit festhalten, mehrfach neu würfeln: bleibt, Summe stimmt, Ausgeschlossenes kommt nicht vor
+  await page.click('[data-testid=dice-list] li:first-child [data-testid=dice-lock]');
+  const keep = (await items())[0];
+  assert.equal(keep.locked, true);
+  for (let k = 0; k < 8; k += 1) {
+    await click('dice-reroll');
+    const list = await items();
+    assert.deepEqual(list[0], keep);
+    assert.equal(list.map((x) => toMin(x.dur)).reduce((a, b) => a + b, 0), 495);
+    assert.ok(list.every((x) => !['Kommissionieren', 'Nur gewürfelt'].includes(x.title)), JSON.stringify(list));
+    assert.equal(new Set(list.map((x) => x.title)).size, list.length, 'keine doppelte Tätigkeit');
+  }
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await page.waitForFunction(() => document.querySelector('[data-testid=activity-check]')?.textContent.includes('entsprechen genau'));
+  const acts = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.filter((a) => a.day === '2026-03-02' && !a.deleted));
+  assert.ok(acts.length > 0 && acts.every((a) => a.source === 'dice'), 'als gewürfelt markiert');
+  assert.equal(await page.locator('.act-dice').count(), acts.length);
+  // Bearbeiten macht aus einer gewürfelten eine selbst eingetragene Tätigkeit
+  await page.click('[aria-label=Bearbeiten] >> nth=0');
+  await page.click('dialog button[type=submit]');
+  await page.waitForSelector('dialog', { state: 'detached' });
+  await page.waitForFunction((n) => document.querySelectorAll('.act-dice').length === n - 1, acts.length);
+  const manual = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.filter((a) => a.day === '2026-03-02' && !a.deleted && a.source !== 'dice').length);
+  assert.equal(manual, 1);
+  // Einstellungen zeigen dieselbe Auswahl; dort wieder aufnehmen
+  await page.goto(`${base}#/einstellungen`);
+  await page.waitForSelector('[data-testid=dice-settings]');
+  const boxes = await page.$$eval('[data-testid=dice-setting]', (els) => els.map((e) => [e.parentElement.textContent.split(' · ')[0].trim(), e.checked]));
+  assert.deepEqual(Object.fromEntries(boxes), { Versenden: true, 'Patch löten': true, Prüfen: true, Kommissionieren: false });
+  await page.check('[data-testid=dice-settings] label:has-text("Kommissionieren") input');
+  await page.selectOption('[data-testid=dice-weeks-setting]', '4');
+  await pollSettings((s) => s.diceExcluded.length === 0 && s.diceWeeks === 4);
+});
+
 test('Urlaub eintragen: zählt als Netto-Arbeitszeit der Woche, Zeitkonto unverändert, Wochenende übersprungen', async () => {
   await workday(); // Mo 02.03.: 8:15 netto, Gehen 16:40 → 16:45 = −0:05
   await page.goto(`${base}#/konto`);

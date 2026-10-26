@@ -8,7 +8,7 @@ import {
 import { newInterval, touch, DAY_TYPES, INTENSITIES } from '../core/model.js';
 import { stampChoices } from '../core/booking.js';
 import { activityTemplates, filterTemplates, templateMinutes, hideTemplate, memoryKey } from '../core/memory.js';
-import { activityStats, rollDay } from '../core/dice.js';
+import { activityStats, rerollDay, diceCandidates } from '../core/dice.js';
 import { ValidationError } from '../db/repo.js';
 
 const err = (msg) => new ValidationError([msg]);
@@ -498,54 +498,115 @@ export function quickActivityDialog(app, day, title = '', { openMin = 0, templat
   });
 }
 
+export const DICE_WEEKS = [[0, 'Gesamter Zeitraum'], [4, 'Letzte 4 Wochen'], [8, 'Letzte 8 Wochen'], [12, 'Letzte 12 Wochen'], [26, 'Letzte 26 Wochen']];
+
 /**
- * „Tag würfeln“: Vorschlag aus der eigenen Statistik (letzte 8 Wochen), der genau die offene Zeit füllt.
- * Neu würfeln beliebig oft; gespeichert wird erst mit „Übernehmen“ – vorhandene Tätigkeiten bleiben.
+ * „Tag würfeln“: Vorschlag aus der eigenen Statistik (nur selbst eingetragene Tätigkeiten), der genau die
+ * offene Zeit füllt. Einzelne Tätigkeiten lassen sich festhalten (🔒) – „Neu würfeln“ ändert dann nur den
+ * Rest. Welche Tätigkeiten gewürfelt werden und welcher Zeitraum zählt, lässt sich hier (kompakt) und in den
+ * Einstellungen wählen. Gespeichert wird erst mit „Übernehmen“ (als gewürfelt markiert); vorhandene bleiben.
  */
-export function diceDialog(app, day, { activities, openMin }) {
-  const stats = activityStats(activities, day, { weeks: 8 });
+export function diceDialog(app, day, { activities, openMin, settings }) {
+  let excluded = [...(settings?.diceExcluded || [])];
+  let weeks = settings?.diceWeeks || 0;
   const existing = activities.filter((a) => !a.deleted && a.day === day);
-  const exclude = existing.map((a) => memoryKey(a));
-  let proposal = [];
-  const roll = () => {
-    proposal = rollDay(stats, openMin, { exclude });
-    if (!proposal.length) proposal = rollDay(stats, openMin); // alle bekannten schon an dem Tag erfasst
-  };
-  roll();
+  const existingKeys = existing.map((a) => memoryKey(a));
+  let stats = activityStats(activities, day, { weeks, excluded });
+  let proposal = rerollDay(stats, openMin, [], { exclude: existingKeys });
+
   const list = h('ul', { class: 'dice-list', 'data-testid': 'dice-list' });
+  const sumEl = h('b', { 'data-testid': 'dice-sum' });
+  const warn = h('p', { class: 'notice notice-warn small', hidden: true });
+  const info = h('p', { class: 'muted small' });
   const render = () => {
-    list.replaceChildren(...proposal.map((p) => h('li', null,
+    list.replaceChildren(...proposal.map((p, i) => h('li', { class: p.locked ? 'dice-locked' : null },
+      h('button', {
+        type: 'button', class: 'dice-lock', 'aria-pressed': p.locked ? 'true' : 'false', 'data-testid': 'dice-lock',
+        'aria-label': p.locked ? `„${p.title}“ freigeben` : `„${p.title}“ festhalten`,
+        title: p.locked ? 'Festgehalten – bleibt beim Neu-Würfeln' : 'Festhalten (bleibt beim Neu-Würfeln)',
+        onclick: () => { proposal[i] = { ...p, locked: !p.locked }; render(); },
+      }, p.locked ? '🔒' : '🔓'),
       h('div', { class: 'dice-body' },
         h('b', null, p.title),
         h('div', { class: 'muted small' }, [p.category, `an ${Math.round(p.share * 100)} % der Tage`, `üblich ${fmtDuration(Math.round(p.typical))}`].filter(Boolean).join(' · '))),
       h('span', { class: 'dice-dur' }, fmtDuration(p.minutes)))));
+    const sum = proposal.reduce((x, p) => x + p.minutes, 0);
+    sumEl.textContent = fmtDuration(sum);
+    warn.hidden = sum >= openMin;
+    warn.textContent = `Für ${fmtDuration(openMin - sum)} Std. gibt es keine weitere passende Tätigkeit in der Auswahl – bitte selbst ergänzen oder die Auswahl erweitern.`;
+    info.textContent = stats.days
+      ? `Grundlage: ${stats.days} Tag${stats.days === 1 ? '' : 'e'} mit selbst eingetragenen Tätigkeiten (${DICE_WEEKS.find(([w]) => w === weeks)?.[1] || `${weeks} Wochen`}); gewürfelte zählen nicht. Häufige Tätigkeiten kommen öfter vor, die Dauern orientieren sich an deinen Eingaben.`
+      : 'Noch keine selbst eingetragenen Tätigkeiten im gewählten Zeitraum.';
   };
+  const reroll = () => {
+    stats = activityStats(activities, day, { weeks, excluded });
+    proposal = rerollDay(stats, openMin, proposal.filter((p) => p.locked), { exclude: existingKeys });
+    render();
+  };
+
+  // Kompakte Auswahl direkt im Fenster (zugeklappt); Änderungen werden in den Einstellungen gespeichert
+  const candidates = diceCandidates(activities, excluded);
+  const pickSummary = h('summary', null);
+  const updateSummary = () => {
+    const on = candidates.filter((c) => !excluded.includes(c.key)).length;
+    pickSummary.textContent = `Auswahl: ${on} von ${candidates.length} Tätigkeiten · ${(DICE_WEEKS.find(([w]) => w === weeks) || [0, ''])[1]}`;
+  };
+  const persist = async () => {
+    try {
+      const cur = (await app.repo.loadAll()).settings;
+      await app.repo.saveSettings({ ...cur, diceExcluded: excluded, diceWeeks: weeks });
+    } catch (e) { app.error(e); }
+  };
+  const chips = candidates.map((c) => {
+    const b = h('button', {
+      type: 'button', class: 'chip chip-small dice-chip', 'aria-pressed': excluded.includes(c.key) ? 'false' : 'true', 'data-testid': 'dice-pick',
+      onclick: async () => {
+        excluded = excluded.includes(c.key) ? excluded.filter((k) => k !== c.key) : [...excluded, c.key];
+        b.setAttribute('aria-pressed', excluded.includes(c.key) ? 'false' : 'true');
+        updateSummary();
+        await persist();
+        reroll();
+      },
+    }, c.title);
+    return b;
+  });
+  const weeksSel = h('select', {
+    class: 'input', 'aria-label': 'Zeitraum der Statistik', 'data-testid': 'dice-weeks',
+    onchange: async (ev) => { weeks = Number(ev.target.value) || 0; updateSummary(); await persist(); reroll(); },
+  }, DICE_WEEKS.map(([w, label]) => h('option', { value: w, selected: w === weeks }, label)));
+  const picker = h('details', { class: 'dice-pick', 'data-testid': 'dice-picker' }, pickSummary,
+    h('div', { class: 'dice-chips' }, chips), weeksSel,
+    h('p', { class: 'muted small' }, 'Antippen schließt eine Tätigkeit vom Würfeln aus bzw. nimmt sie wieder auf. Auch unter Einstellungen → „Tag würfeln“.'));
+  updateSummary();
   render();
+
   return formDialog({
     title: `${existing.length ? 'Rest des Tages' : 'Tag'} würfeln – ${fmtDate(day, { year: false })}`,
     submitText: 'Übernehmen',
     build: () => {
-      if (!stats.templates.length) {
-        return [h('p', null, 'Es gibt noch keine erfassten Tätigkeiten aus den letzten 8 Wochen. Bitte zuerst einige Tage selbst eintragen – daraus lernt die Würfelfunktion, welche Tätigkeiten wie oft und wie lange vorkommen.')];
+      if (!candidates.length) {
+        return [h('p', null, 'Es gibt noch keine selbst eingetragenen Tätigkeiten. Bitte zuerst einige Tage selbst eintragen – daraus lernt die Würfelfunktion, welche Tätigkeiten wie oft und wie lange vorkommen.')];
       }
       return [
-        h('p', { class: 'small' }, `Zu vergeben: `, h('b', null, `${fmtDuration(openMin)} Std.`),
+        h('p', { class: 'small' }, 'Zu vergeben: ', h('b', null, `${fmtDuration(openMin)} Std.`),
           existing.length ? ` (bereits erfasst: ${existing.length} Tätigkeit${existing.length === 1 ? '' : 'en'} – bleiben unverändert)` : ''),
+        picker,
         list,
-        h('div', { class: 'dice-sum' }, h('span', null, 'Summe'), h('b', { 'data-testid': 'dice-sum' }, fmtDuration(openMin))),
-        h('button', { type: 'button', class: 'btn btn-block', 'data-testid': 'dice-reroll', onclick: () => { roll(); render(); } }, '🎲 Neu würfeln'),
-        h('p', { class: 'muted small' }, `Grundlage: ${stats.days} Tag${stats.days === 1 ? '' : 'e'} mit Tätigkeiten aus den letzten 8 Wochen. Häufige Tätigkeiten kommen öfter vor, die Dauern orientieren sich an deinen Eingaben.`,
-          stats.days < 5 ? ' Noch wenige Tage erfasst – der Vorschlag wird mit der Zeit genauer.' : ''),
+        h('div', { class: 'dice-sum' }, h('span', null, 'Summe'), sumEl),
+        warn,
+        h('button', { type: 'button', class: 'btn btn-block', 'data-testid': 'dice-reroll', onclick: reroll }, '🎲 Neu würfeln (🔒 bleibt)'),
+        info,
       ];
     },
     onSubmit: async () => {
       if (!proposal.length) throw err('Kein Vorschlag vorhanden.');
       const changes = [];
       for (const p of proposal) {
-        const res = await app.repo.saveActivity({ day, title: p.title, description: p.description || '', minutes: p.minutes, intensity: p.intensity || null, category: p.category || null });
+        const res = await app.repo.saveActivity({ day, title: p.title, description: p.description || '', minutes: p.minutes, intensity: p.intensity || null, category: p.category || null, source: 'dice' });
         changes.push(...(res.changes || []));
       }
-      undoToast(app, `${proposal.length} Tätigkeit${proposal.length === 1 ? '' : 'en'} übernommen (${fmtDuration(openMin)} Std.).`, changes);
+      const sum = proposal.reduce((x, p) => x + p.minutes, 0);
+      undoToast(app, `${proposal.length} Tätigkeit${proposal.length === 1 ? '' : 'en'} übernommen (${fmtDuration(sum)} Std.).`, changes);
     },
   });
 }
@@ -573,6 +634,7 @@ export function editActivityDialog(app, day, rec = null, categories = [], sugges
       if (!minutes || minutes <= 0) throw durationError(f.get('duration'));
       const res = await app.repo.saveActivity({
         ...(rec ? { id: rec.id } : {}),
+        ...(rec?.source === 'dice' ? { source: null } : {}), // selbst bearbeitet → zählt als eingetragen
         day,
         title: f.get('title'),
         description: f.get('description') || '',

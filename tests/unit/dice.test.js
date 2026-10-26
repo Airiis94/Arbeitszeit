@@ -1,7 +1,7 @@
 import './helpers.js';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { activityStats, rollDay } from '../../app/js/core/dice.js';
+import { activityStats, rollDay, rerollDay, diceCandidates } from '../../app/js/core/dice.js';
 import { memoryKey } from '../../app/js/core/memory.js';
 import { addDays } from '../../app/js/core/time.js';
 
@@ -94,6 +94,43 @@ describe('Tätigkeiten würfeln', () => {
       assert.ok(!r.some((a) => a.title === 'Versenden'));
       assert.equal(r.reduce((x, a) => x + a.minutes, 0), 270);
     }
+  });
+
+  test('nur selbst eingetragene Tätigkeiten zählen – gewürfelte nicht', () => {
+    const rolled = [act('2026-10-21', 'Gewürfelt', 480, { source: 'dice' }), act('2026-10-22', 'Versenden', 480, { category: 'Versand', source: 'dice' })];
+    const s = activityStats([...history, ...rolled], DAY, { weeks: 8 });
+    assert.ok(!s.templates.some((t) => t.title === 'Gewürfelt'));
+    assert.equal(s.days, 20); // gewürfelte Tage zählen nicht als Tage
+    assert.equal(s.templates.find((t) => t.title === 'Versenden').typical, 150); // 480 aus dem Wurf zählt nicht
+  });
+
+  test('Auswahl in den Einstellungen und Zeitraum (gesamt oder letzte Wochen)', () => {
+    const versenden = memoryKey({ title: 'Versenden', category: 'Versand' });
+    const s = activityStats(history, DAY, { excluded: [versenden] });
+    assert.ok(!s.templates.some((t) => t.title === 'Versenden'));
+    for (let seed = 1; seed <= 50; seed += 1) assert.ok(!rollDay(s, 480, { rng: seeded(seed) }).some((a) => a.title === 'Versenden'));
+    // gesamter Zeitraum (Standard): auch Tage nach dem gewählten Tag zählen, der Tag selbst nicht
+    assert.equal(activityStats(history, '2026-10-05').days, 19);
+    assert.equal(activityStats(history, '2026-10-05', { weeks: 1 }).days, 5);
+    const cand = diceCandidates([...history, act('2026-10-23', 'X', 30, { source: 'dice' })], [versenden]);
+    assert.deepEqual(cand.map((c) => [c.title, c.included]), [['Versenden', false], ['Kommissionieren', true], ['Patch löten', true], ['Inventur', true]]);
+  });
+
+  test('gelockte Tätigkeiten bleiben beim Neu-Würfeln, der Rest füllt die offene Zeit', () => {
+    const s = activityStats(history, DAY);
+    for (let seed = 1; seed <= 200; seed += 1) {
+      const first = rollDay(s, 480, { rng: seeded(seed) });
+      const locked = first.slice(0, 1);
+      const next = rerollDay(s, 480, locked, { rng: seeded(seed + 1000) });
+      assert.deepEqual(next[0].key, locked[0].key);
+      assert.equal(next[0].minutes, locked[0].minutes);
+      assert.equal(next[0].locked, true);
+      assert.equal(next.reduce((x, a) => x + a.minutes, 0), 480, `seed ${seed}`);
+      assert.equal(new Set(next.map((a) => a.key)).size, next.length);
+    }
+    // alles gelockt: nichts mehr zu würfeln
+    const all = rollDay(s, 480, { rng: seeded(7) });
+    assert.deepEqual(rerollDay(s, 480, all).map((a) => [a.key, a.minutes]), all.map((a) => [a.key, a.minutes]));
   });
 
   test('ohne Statistik oder ohne offene Zeit: kein Vorschlag', () => {

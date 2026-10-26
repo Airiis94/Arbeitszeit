@@ -819,3 +819,16 @@ textarea.input { min-height: 80px; resize: vertical; }
 .dice-dur { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; flex: none; }
 .dice-sum { display: flex; justify-content: space-between; padding: 4px 10px 8px; font-weight: 700; }
 .credit-box { display: flex; flex-direction: column; }
+
+/* Würfeln: festhalten und Auswahl */
+.dice-lock { flex: none; min-width: 40px; min-height: 40px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 1.1rem; cursor: pointer; }
+.dice-lock[aria-pressed="true"] { border-color: var(--primary); background: var(--info-bg); }
+.dice-list li.dice-locked { border-color: var(--primary); background: var(--info-bg); }
+.dice-list .dice-body { flex: 1; }
+.dice-pick { border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; margin: 6px 0; }
+.dice-pick summary { font-size: 0.85rem; min-height: 28px; display: list-item; }
+.dice-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.dice-chip[aria-pressed="false"] { opacity: 0.55; text-decoration: line-through; }
+.dice-chip[aria-pressed="true"] { border-color: var(--primary); }
+.act-dice { margin-left: 6px; font-size: 0.7rem; vertical-align: middle; }
+.dice-settings { max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }

@@ -17,9 +17,12 @@ JSON-Datei, die du selbst verwahrst.
   wie sie verstanden wird (H:MM, Minuten, Dezimalstunden wie im Nachweis). Eine einzelne Ziffer ohne Einheit
   wird nachgefragt statt geraten. Tätigkeiten lassen sich für jeden früheren Tag nachtragen; „Noch offene
   Tage“ listet die Tage der letzten 12 Wochen, an denen die Tätigkeiten noch nicht zur Netto-Arbeitszeit passen.
-- **Tag würfeln**: Tätigkeiten der offenen Zeit nach eigener Statistik (letzte 8 Wochen: Häufigkeit je Tag,
-  übliche Dauer) vorschlagen lassen – füllt genau die Netto-Arbeitszeit bzw. den Rest; Vorschlag neu würfeln,
-  erst „Übernehmen“ speichert, vorhandene Einträge bleiben (`core/dice.js`).
+- **Tag würfeln**: Tätigkeiten der offenen Zeit nach eigener Statistik (Häufigkeit je Tag, übliche Dauer)
+  vorschlagen lassen – füllt genau die Netto-Arbeitszeit bzw. den Rest. Einzelne Vorschläge festhalten (🔒) und
+  den Rest neu würfeln; erst „Übernehmen“ speichert, vorhandene Einträge bleiben. Grundlage sind nur selbst
+  eingetragene Tätigkeiten: gewürfelte werden mit `source: 'dice'` markiert und zählen nicht (Bearbeiten macht
+  sie zu eigenen Einträgen). Welche Tätigkeiten gewürfelt werden und welcher Zeitraum zählt, steht in den
+  Einstellungen (`diceExcluded`, `diceWeeks`) und kompakt im Würfel-Fenster (`core/dice.js`).
 - **Urlaub als Arbeitszeit**: Urlaub für einen oder mehrere Tage (Mo–Fr) mit Zeit (z. B. 09:00, 8:00 Std.)
   eintragen; zählt als Netto-Arbeitszeit für Woche und Ausbildungsnachweis, nicht für das Zeitkonto.
 - **Schnellerfassung auf „Heute“**: Tätigkeit eintippen, Uhr-Knopf → Dauer wählen (Schnellwahl oder

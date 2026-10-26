@@ -86,6 +86,7 @@ const VALIDATORS = {
     if (!r.deleted && (!isStr(r.title) || !r.title.trim())) e.push(`${w}: fehlende Bezeichnung`);
     if (!isInt(r.minutes) || r.minutes < 0) e.push(`${w}: ungültige Dauer`);
     if (r.intensity != null && !INTENSITIES.includes(r.intensity)) e.push(`${w}: ungültige Intensität`);
+    if (r.source != null && r.source !== 'dice') e.push(`${w}: unbekannte Herkunft`);
   },
   corrections(r, w, e) {
     if (!isValidDayKey(r.day)) e.push(`${w}: ungültiger Tag`);
@@ -106,6 +107,8 @@ function validateSettings(s, errors) {
     && s.activityMemoryHidden.every((x) => x && typeof x.key === 'string' && isInt(x.at)))) {
     errors.push('Einstellungen: ungültiger Zwischenspeicher der Tätigkeiten');
   }
+  if (s.diceExcluded != null && !(Array.isArray(s.diceExcluded) && s.diceExcluded.every((x) => typeof x === 'string'))) errors.push('Einstellungen: ungültige Würfel-Auswahl');
+  if (s.diceWeeks != null && (!isInt(s.diceWeeks) || s.diceWeeks < 0)) errors.push('Einstellungen: ungültiger Würfel-Zeitraum');
   if (s.rounding != null && (!isInt(s.rounding.interval) || s.rounding.interval < 1 || s.rounding.interval > 240)) {
     errors.push('Einstellungen: ungültiges Buchungsraster');
   }

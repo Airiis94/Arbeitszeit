@@ -68,6 +68,9 @@ export function defaultSettings(today = todayKey()) {
     report: { name: '', trainingStart: null },
     // Aus dem Zwischenspeicher der Tätigkeiten entfernte Einträge: [{ key, at }]
     activityMemoryHidden: [],
+    // Tag würfeln: ausgeschlossene Tätigkeiten (Schlüssel) und Zeitraum der Statistik (0 = gesamt)
+    diceExcluded: [],
+    diceWeeks: 0,
     updatedAt: 0,
   };
 }
@@ -86,5 +89,7 @@ export function normalizeSettings(s, today = todayKey()) {
   delete out.rounding.carryRule;
   if (out.trackingMode !== 'exact') out.trackingMode = 'quarter';
   if (!Array.isArray(out.activityMemoryHidden)) out.activityMemoryHidden = [];
+  if (!Array.isArray(out.diceExcluded)) out.diceExcluded = [];
+  if (!Number.isInteger(out.diceWeeks) || out.diceWeeks < 0) out.diceWeeks = 0;
   return out;
 }

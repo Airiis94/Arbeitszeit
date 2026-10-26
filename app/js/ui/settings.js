@@ -12,6 +12,8 @@ import { APP_VERSION, SCHEMA_VERSION } from '../core/model.js';
 import { backupState } from './common.js';
 import { exportBackup, shareBackup, importFlow, canShareFiles, exportReport, downloadSnapshot } from './backup.js';
 import { ValidationError } from '../db/repo.js';
+import { diceCandidates } from '../core/dice.js';
+import { DICE_WEEKS } from './editors.js';
 
 const err = (m) => new ValidationError([m]);
 
@@ -218,6 +220,34 @@ export async function renderSettings(app) {
     field('Sicherungs-Erinnerung nach (Tagen)', h('input', { type: 'number', name: 'reminder', class: 'input input-short', min: 1, max: 365, value: settings.backupReminderDays })),
     h('button', { type: 'submit', class: 'btn btn-primary' }, 'Regeln speichern')));
 
+  // ----- Tag würfeln -----
+  // Gespeichert wird sofort; immer auf Basis der aktuell gespeicherten Einstellungen (nichts anderes wird überschrieben).
+  const saveDice = async (patch, msg) => {
+    try {
+      const cur = (await app.repo.loadAll()).settings;
+      await app.repo.saveSettings({ ...cur, ...patch });
+      toast(msg, { type: 'success' });
+    } catch (e) { app.error(e); }
+  };
+  const candidates = diceCandidates(data.activities, settings.diceExcluded || []);
+  const diceBoxes = candidates.map((c) => h('label', { class: 'check' },
+    h('input', { type: 'checkbox', value: c.key, checked: c.included, 'data-testid': 'dice-setting', onchange: () => saveDiceSel() }),
+    h('span', null, c.title, h('span', { class: 'muted small' }, ` · ${[c.category, `${c.daysWith} Tag${c.daysWith === 1 ? '' : 'e'}`].filter(Boolean).join(' · ')}`))));
+  const saveDiceSel = () => saveDice({ diceExcluded: diceBoxes.map((l) => l.querySelector('input')).filter((i) => !i.checked).map((i) => i.value) }, 'Würfel-Auswahl gespeichert.');
+  const setAll = (on) => { diceBoxes.forEach((l) => { l.querySelector('input').checked = on; }); saveDiceSel(); };
+  const diceSection = section('Tag würfeln',
+    h('p', { class: 'muted small' }, 'Die Würfelfunktion schlägt Tätigkeiten anhand deiner selbst eingetragenen Tätigkeiten vor (gewürfelte zählen nicht). Hier legst du fest, welche Tätigkeiten gewürfelt werden dürfen und welcher Zeitraum für Häufigkeit und Dauer zählt.'),
+    field('Zeitraum der Statistik', h('select', {
+      class: 'input', 'data-testid': 'dice-weeks-setting',
+      onchange: (ev) => saveDice({ diceWeeks: Number(ev.target.value) || 0 }, 'Zeitraum gespeichert.'),
+    }, DICE_WEEKS.map(([w, label]) => h('option', { value: w, selected: (settings.diceWeeks || 0) === w }, label)))),
+    candidates.length
+      ? [h('div', { class: 'btn-row' },
+        h('button', { type: 'button', class: 'btn btn-small', onclick: () => setAll(true) }, 'Alle'),
+        h('button', { type: 'button', class: 'btn btn-small', onclick: () => setAll(false) }, 'Keine')),
+      h('div', { class: 'dice-settings', 'data-testid': 'dice-settings' }, diceBoxes)]
+      : h('p', { class: 'small' }, 'Noch keine selbst eingetragenen Tätigkeiten.'));
+
   // ----- Darstellung -----
   const themeSection = section('Darstellung',
     field('Farbschema', h('select', {
@@ -248,9 +278,9 @@ export async function renderSettings(app) {
     }, 'Alle Daten löschen …'));
 
   return h('section', { class: 'view view-settings' },
-    jumpNav([['Sicherung', backupSection], ['Zeitkonto', accountSection], ['Nachweis', reportSection], ['Speicher', storageSection], ['Darstellung', themeSection], ['Löschen', dangerSection]]),
+    jumpNav([['Sicherung', backupSection], ['Zeitkonto', accountSection], ['Nachweis', reportSection], ['Würfeln', diceSection], ['Speicher', storageSection], ['Darstellung', themeSection], ['Löschen', dangerSection]]),
     h('a', { class: 'btn btn-block', href: '#/hilfe' }, '❓ Hilfe & Installationsanleitung'),
-    backupSection, accountSection, reportSection, storageSection, themeSection, dangerSection,
+    backupSection, accountSection, reportSection, diceSection, storageSection, themeSection, dangerSection,
     h('p', { class: 'muted small center' }, `Arbeitszeit v${APP_VERSION} · Datenformat ${SCHEMA_VERSION} · Gerät ${String(meta.deviceId || '').slice(0, 8)}`,
       h('br'), 'Keine Werbung, kein Tracking, keine Server – alle Daten bleiben auf diesem Gerät.'));
 }
