@@ -56,7 +56,9 @@ export async function renderSettings(app) {
 
   const save = async (next, msg = 'Einstellungen gespeichert.') => {
     try {
-      await app.repo.saveSettings(next);
+      // nur die geänderten Felder – andere, inzwischen gespeicherte Änderungen bleiben erhalten
+      const changed = Object.fromEntries(Object.entries(next).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(settings[k])));
+      await app.repo.updateSettings(changed);
       toast(msg, { type: 'success' });
     } catch (e) { app.error(e); }
   };
@@ -221,11 +223,10 @@ export async function renderSettings(app) {
     h('button', { type: 'submit', class: 'btn btn-primary' }, 'Regeln speichern')));
 
   // ----- Tag würfeln -----
-  // Gespeichert wird sofort; immer auf Basis der aktuell gespeicherten Einstellungen (nichts anderes wird überschrieben).
+  // Gespeichert wird sofort und nur das geänderte Feld (nichts anderes wird überschrieben).
   const saveDice = async (patch, msg) => {
     try {
-      const cur = (await app.repo.loadAll()).settings;
-      await app.repo.saveSettings({ ...cur, ...patch });
+      await app.repo.updateSettings(patch);
       toast(msg, { type: 'success' });
     } catch (e) { app.error(e); }
   };

@@ -428,8 +428,7 @@ function memoryPicker(app, form, memory, suggestMin) {
   const remove = async (t) => {
     hidden = hideTemplate(hidden, t.key);
     try {
-      const settings = (await app.repo.loadAll()).settings;
-      await app.repo.saveSettings({ ...settings, activityMemoryHidden: hidden });
+      await app.repo.updateSettings((cur) => ({ activityMemoryHidden: hideTemplate(cur.activityMemoryHidden, t.key) }));
       templates = templates.filter((x) => x.key !== t.key);
       render();
       toast(`„${t.title}“ aus dem Zwischenspeicher entfernt.`);
@@ -553,8 +552,7 @@ export function diceDialog(app, day, { activities, openMin, settings }) {
   };
   const persist = async () => {
     try {
-      const cur = (await app.repo.loadAll()).settings;
-      await app.repo.saveSettings({ ...cur, diceExcluded: excluded, diceWeeks: weeks });
+      await app.repo.updateSettings({ diceExcluded: excluded, diceWeeks: weeks });
     } catch (e) { app.error(e); }
   };
   const chips = candidates.map((c) => {

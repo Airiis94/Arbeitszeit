@@ -222,6 +222,20 @@ export class Repo {
     return this.#saveSimple('corrections', 'correction', { id, deleted: true }, now);
   }
 
+  /**
+   * Einzelne Einstellungen ändern: Lesen und Schreiben in derselben Transaktion, damit schnell
+   * aufeinanderfolgende Änderungen sich nicht gegenseitig überschreiben.
+   * @param patch Objekt mit den geänderten Feldern oder (aktuelle Einstellungen) => Objekt
+   */
+  async updateSettings(patch, now = Date.now()) {
+    return this.#write(['kv'], async (tx) => {
+      const cur = normalizeSettings((await get(tx, 'kv', 'settings'))?.value);
+      const next = { ...cur, ...(typeof patch === 'function' ? patch(cur) : patch), updatedAt: now };
+      await put(tx, 'kv', { key: 'settings', value: next });
+      return next;
+    });
+  }
+
   async saveSettings(settings, now = Date.now()) {
     return this.#write(['kv'], async (tx) => {
       await put(tx, 'kv', { key: 'settings', value: { ...settings, updatedAt: now } });

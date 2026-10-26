@@ -513,6 +513,14 @@ test('Tag würfeln: festhalten, Auswahl, gewürfelte zählen nicht zur Statistik
   await page.check('[data-testid=dice-settings] label:has-text("Kommissionieren") input');
   await page.selectOption('[data-testid=dice-weeks-setting]', '4');
   await pollSettings((s) => s.diceExcluded.length === 0 && s.diceWeeks === 4);
+  // gleichzeitige Änderungen gehen nicht verloren
+  const both = await page.evaluate(async () => {
+    const r = window.__app.repo;
+    await Promise.all([r.updateSettings({ diceWeeks: 12 }), r.updateSettings({ diceExcluded: ['x'] }), r.updateSettings({ theme: 'dark' })]);
+    const s = (await r.loadAll()).settings;
+    return [s.diceWeeks, s.diceExcluded, s.theme, s.accountStart];
+  });
+  assert.deepEqual(both, [12, ['x'], 'dark', '2026-03-02']);
 });
 
 test('Urlaub eintragen: zählt als Netto-Arbeitszeit der Woche, Zeitkonto unverändert, Wochenende übersprungen', async () => {
