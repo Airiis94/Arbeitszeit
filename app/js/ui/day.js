@@ -86,7 +86,7 @@ export async function renderDay(app, params) {
     h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('h2', null, 'Buchungen')),
       entryList(day, d, sessionsEdit),
-      h('div', { class: 'btn-row' },
+      h('div', { class: 'btn-row btn-row-tight' },
         h('button', { type: 'button', class: 'btn', onclick: () => editWorkDialog(app, day) }, '+ Arbeitsphase'),
         h('button', { type: 'button', class: 'btn', onclick: () => editBreakDialog(app, day, null, d.sessions) }, '+ Pause')),
       h('div', { class: 'quick' },

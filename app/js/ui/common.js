@@ -64,10 +64,12 @@ export function entryList(day, dayCalc, { onEdit, onDelete, booking, onChoose } 
     const stamps = bk ? bk.stamps : [];
     return h('li', { class: `entry entry-${rec.kind}${issueIds.has(rec.id) ? ' entry-issue' : ''}` },
       h('div', { class: 'entry-main' },
-        h('span', { class: 'entry-kind' }, isWork ? 'Arbeit' : 'Pause'),
-        h('span', { class: 'entry-range', 'data-testid': 'booked-range' }, range),
-        h('span', { class: 'entry-dur num' }, dur),
-        h('span', { class: 'entry-src', title: rec.source === 'clock' ? 'gestempelt' : 'manuell eingetragen' }, rec.source === 'clock' ? '' : 'manuell'),
+        h('div', { class: 'entry-head' },
+          h('span', { class: 'entry-kind' }, isWork ? 'Arbeit' : 'Pause'),
+          h('span', { class: 'entry-dur num' }, dur),
+          h('span', { class: 'entry-src', title: rec.source === 'clock' ? 'gestempelt' : 'manuell eingetragen' }, rec.source === 'clock' ? '' : 'manuell')),
+        h('div', { class: 'entry-time' },
+          h('span', { class: 'entry-range', 'data-testid': 'booked-range' }, range)),
         onEdit || onDelete ? h('span', { class: 'entry-actions' },
           // eigenes Symbol (Uhr mit Stift) + Beschriftung: Beginn/Ende ändern – nicht zu verwechseln mit ✎ an den Stempeln
           onEdit && h('button', {

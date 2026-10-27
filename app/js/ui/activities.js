@@ -5,6 +5,11 @@ import { dayRow, activityCheck, computeAccount } from '../core/calc.js';
 import { fmtDuration, fmtHoursDecimal, fmtDate, addDays, todayKey, isValidDayKey } from '../core/time.js';
 import { editActivityDialog, diceDialog, undoToast } from './editors.js';
 
+const openDayList = (list) => h('ul', { class: 'open-days' }, list.map(({ day: d, chk: c }) => h('li', null,
+  h('a', { href: `#/taetigkeiten/${d}` },
+    h('span', null, fmtDate(d, { year: false })),
+    h('span', { class: c.gap > 0 ? 'od-open' : 'od-over' }, c.gap > 0 ? `noch ${fmtDuration(c.gap)} offen` : `${fmtDuration(-c.gap)} zu viel`)))));
+
 export async function renderActivities(app, params) {
   const day = isValidDayKey(params[0]) ? params[0] : todayKey();
   const data = await app.load();
@@ -104,9 +109,8 @@ export async function renderActivities(app, params) {
     openDays.length ? h('div', { class: 'card', 'data-testid': 'open-days' },
       h('div', { class: 'card-head' }, h('h2', null, `Noch offene Tage (${openDays.length})`)),
       h('p', { class: 'muted small' }, 'Tage der letzten 12 Wochen, an denen die Tätigkeiten noch nicht der Netto-Arbeitszeit entsprechen. Antippen zum Ergänzen.'),
-      h('ul', { class: 'open-days' }, openDays.slice(0, 20).map(({ day: d, chk: c }) => h('li', null,
-        h('a', { href: `#/taetigkeiten/${d}` },
-          h('span', null, fmtDate(d, { year: false })),
-          h('span', { class: c.gap > 0 ? 'od-open' : 'od-over' }, c.gap > 0 ? `noch ${fmtDuration(c.gap)} offen` : `${fmtDuration(-c.gap)} zu viel`)))))) : null,
+      openDayList(openDays.slice(0, 5)),
+      openDays.length > 5 ? h('details', { class: 'more' },
+        h('summary', null, `Weitere ${Math.min(openDays.length, 20) - 5} anzeigen`), openDayList(openDays.slice(5, 20))) : null) : null,
     h('a', { class: 'card-link', href: `#/tag/${day}` }, 'Zur Tagesansicht →'));
 }

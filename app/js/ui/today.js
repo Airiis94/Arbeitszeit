@@ -185,7 +185,7 @@ export async function renderToday(app) {
         onDelete: (rec) => deleteIntervalFlow(app, rec),
       }),
       quarter && booking.stamps.length
-        ? h('p', { class: 'muted small' }, '„Ändern“: Beginn und Ende korrigieren. ✎ an einer Zeit: gebuchte Viertelstunde wählen (z. B. 08:45 oder 09:00) – die Differenz wird mit dem Zeitkonto verrechnet.') : null,
+        ? h('p', { class: 'muted small' }, '✎ an einer Zeit: gebuchte Viertelstunde wählen – die Differenz geht ins Zeitkonto.') : null,
       h('a', { class: 'card-link', href: `#/taetigkeiten/${workDay}` }, 'Tätigkeiten erfassen →')),
   );
 }

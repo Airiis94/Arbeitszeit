@@ -33,6 +33,8 @@
   --shadow: 0 1px 2px rgba(16, 32, 48, 0.06), 0 1px 1px rgba(16, 32, 48, 0.04);
   --radius: 14px;
   --nav-h: 64px;
+  --topbar-bg: var(--primary);
+  --topbar-text: #ffffff;
   color-scheme: light;
 }
 
@@ -58,6 +60,8 @@
     --break-bg: #35270c;
     --idle-bg: #1d2a37;
     --shadow: none;
+    --topbar-bg: #17324a;
+    --topbar-text: #e8eef3;
     color-scheme: dark;
   }
 }
@@ -83,6 +87,8 @@
   --break-bg: #35270c;
   --idle-bg: #1d2a37;
   --shadow: none;
+  --topbar-bg: #17324a;
+  --topbar-text: #e8eef3;
   color-scheme: dark;
 }
 
@@ -126,8 +132,8 @@ p { margin: 8px 0; }
   gap: 8px;
   padding: 8px 12px 8px 14px;
   padding-top: calc(8px + env(safe-area-inset-top));
-  background: var(--primary);
-  color: var(--primary-text);
+  background: var(--topbar-bg);
+  color: var(--topbar-text);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand-mark { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border-radius: 10px; background: rgba(255, 255, 255, 0.16); flex: none; }
@@ -144,7 +150,7 @@ p { margin: 8px 0; }
 body.offline .offline-flag { display: inline-block; }
 .topbar-right { display: flex; align-items: center; gap: 8px; flex: none; }
 .help-link {
-  color: var(--primary-text);
+  color: var(--topbar-text);
   text-decoration: none;
   font-weight: 700;
   padding: 6px 12px 6px 8px;
@@ -250,6 +256,7 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .btn-block { width: 100%; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .btn-row .btn { flex: 1 1 140px; }
+.btn-row-tight .btn { flex-basis: 120px; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
 .btn-col { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
 
 .icon-btn {
@@ -420,13 +427,16 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 }
 .entry-break { border-left-color: var(--btn-pause); }
 .entry-main {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "head actions" "time actions";
   align-items: center;
-  gap: 4px 6px;
+  gap: 2px 8px;
 }
-/* Ändern/Löschen immer zusammen rechtsbündig; bei Platzmangel gemeinsam in eigener Zeile */
-.entry-actions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.entry-head { grid-area: head; display: flex; align-items: center; gap: 6px; }
+.entry-time { grid-area: time; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+/* Ändern/Löschen rechts neben Art und Zeit – keine eigene Zeile */
+.entry-actions { grid-area: actions; display: inline-flex; align-items: center; gap: 2px; }
 .entry-edit {
   display: inline-flex; align-items: center; gap: 5px; min-height: 40px; padding: 4px 10px 4px 7px;
   border: 1.5px solid var(--primary); border-radius: 999px; background: var(--info-bg); color: var(--primary);
@@ -436,7 +446,7 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .entry-edit:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 .entry-kind { font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--work-bg); color: var(--work); }
 .entry-break .entry-kind { background: var(--break-bg); color: var(--break); }
-.entry-range { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.entry-range { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 .entry-main .icon-btn { min-width: 40px; }
 .entry-issue { background: var(--error-bg); border-color: var(--neg); }
 .entry-src { color: var(--muted); font-size: 0.7rem; }
@@ -585,12 +595,13 @@ tr.clickable:active { background: var(--surface-2); }
 .corr-list { list-style: none; padding: 0; margin: 0; }
 .corr-list li {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 6px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--border);
 }
+.corr-top { display: flex; justify-content: space-between; gap: 8px; }
 .corr-reason { color: var(--muted); font-size: 0.9rem; }
 
 /* ---------- Einstellungen ---------- */
@@ -832,3 +843,11 @@ textarea.input { min-height: 80px; resize: vertical; }
 .dice-chip[aria-pressed="true"] { border-color: var(--primary); }
 .act-dice { margin-left: 6px; font-size: 0.7rem; vertical-align: middle; }
 .dice-settings { max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+
+/* Zeitkonto-Verlauf kompakt (360 px) */
+.ledger .ledger-day { font-weight: 600; }
+.ledger .ledger-range { color: var(--muted); font-size: 0.75rem; }
+.ledger td.num, .ledger th.num { text-align: right; }
+.ledger td, .ledger th { font-size: 0.88rem; padding: 7px 4px; }
+details.more { margin-top: 4px; }
+details.more > summary { cursor: pointer; color: var(--primary); font-weight: 700; padding: 8px 2px; min-height: 40px; }

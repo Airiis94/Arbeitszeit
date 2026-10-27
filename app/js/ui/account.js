@@ -63,9 +63,9 @@ export async function renderAccount(app, params) {
         h('h2', null, 'Korrekturen'),
         h('button', { type: 'button', class: 'btn btn-small', 'data-testid': 'add-correction', onclick: () => editCorrectionDialog(app) }, '+ Korrektur')),
       corrections.length ? h('ul', { class: 'corr-list' }, corrections.map((c) => h('li', null,
-        h('span', null, fmtDate(c.day)),
-        signed(c.minutes),
-        h('span', { class: 'corr-reason' }, c.reason, c.day > today ? ' (zukünftig – noch nicht berücksichtigt)' : ''),
+        h('div', { class: 'corr-main' },
+          h('div', { class: 'corr-top' }, h('span', null, fmtDate(c.day)), h('b', { class: 'num' }, signed(c.minutes))),
+          h('div', { class: 'corr-reason' }, c.reason, c.day > today ? ' (zukünftig – noch nicht berücksichtigt)' : '')),
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Löschen', onclick: () => removeCorrection(c) }, '🗑'))))
         : h('p', { class: 'muted' }, 'Keine Korrekturen.')),
 
@@ -75,17 +75,16 @@ export async function renderAccount(app, params) {
         h('h2', { class: 'nav-title' }, `Verlauf ${fmtMonth(mk)}`),
         h('a', { class: 'btn btn-small', href: `#/konto/${addMonths(mk, 1)}`, 'aria-label': 'Folgemonat' }, '›')),
       pb ? h('div', { class: 'table-wrap' }, h('table', { class: 'ledger' },
-        h('thead', null, h('tr', null, ['Tag', 'Gebucht', 'Arbeit', 'Diff.', 'Konto'].map((t) => h('th', null, t)))),
+        h('thead', null, h('tr', null, [['Tag'], ['Arbeit', 'num'], ['Diff.', 'num'], ['Konto', 'num']].map(([t, c]) => h('th', { class: c || null }, t)))),
         h('tbody', null, h('tr', { class: 'ledger-carry', 'data-testid': 'ledger-carry' },
-          h('td', { colspan: 4 }, `Übertrag aus ${prevName}`), h('td', null, signed(pb.carryIn)))),
+          h('td', { colspan: 3 }, `Übertrag aus ${prevName}`), h('td', { class: 'num' }, signed(pb.carryIn)))),
         h('tbody', null, monthRows.map((r) => h('tr', { class: 'clickable', tabindex: 0, role: 'link', onclick: () => app.navigate(`#/tag/${r.day}`), onkeydown: (e) => { if (e.key === 'Enter') app.navigate(`#/tag/${r.day}`); } },
-          h('td', null, fmtDate(r.day, { year: false }).replace(',', '')),
-          h('td', { class: 'num' }, range(r)),
+          h('td', null, h('div', { class: 'ledger-day' }, fmtDate(r.day, { year: false }).replace(',', '')), h('div', { class: 'ledger-range' }, range(r))),
           h('td', { class: 'num' }, r.bookedNetMin == null ? statusBadge(r.status) : fmtDuration(r.bookedNetMin)),
-          h('td', null, signed(r.effect), r.correction ? h('div', { class: 'small' }, 'Korr. ', signed(r.correction)) : null),
-          h('td', null, signed(r.balance))))),
+          h('td', { class: 'num' }, signed(r.effect), r.correction ? h('div', { class: 'small' }, 'Korr. ', signed(r.correction)) : null),
+          h('td', { class: 'num' }, signed(r.balance))))),
         h('tfoot', null, h('tr', { class: 'ledger-carry', 'data-testid': 'ledger-end' },
-          h('td', { colspan: 4 }, endLabel), h('td', null, signed(pb.end))))))
+          h('td', { colspan: 3 }, endLabel), h('td', { class: 'num' }, signed(pb.end))))))
         : h('p', { class: 'muted' }, `Das Zeitkonto beginnt am ${fmtDate(acc.start)}.`),
       pb && !monthRows.length ? h('p', { class: 'muted small' }, 'Keine Buchungen in diesem Monat – der Stand wird unverändert übertragen.') : null),
   );

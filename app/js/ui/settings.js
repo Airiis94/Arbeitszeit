@@ -233,7 +233,7 @@ export async function renderSettings(app) {
   const candidates = diceCandidates(data.activities, settings.diceExcluded || []);
   const diceBoxes = candidates.map((c) => h('label', { class: 'check' },
     h('input', { type: 'checkbox', value: c.key, checked: c.included, 'data-testid': 'dice-setting', onchange: () => saveDiceSel() }),
-    h('span', null, c.title, h('span', { class: 'muted small' }, ` · ${[c.category, `${c.daysWith} Tag${c.daysWith === 1 ? '' : 'e'}`].filter(Boolean).join(' · ')}`))));
+    h('span', null, c.label, h('span', { class: 'muted small' }, ` · ${[c.category, `${c.daysWith} Tag${c.daysWith === 1 ? '' : 'e'}`].filter(Boolean).join(' · ')}`))));
   const saveDiceSel = () => saveDice({ diceExcluded: diceBoxes.map((l) => l.querySelector('input')).filter((i) => !i.checked).map((i) => i.value) }, 'Würfel-Auswahl gespeichert.');
   const setAll = (on) => { diceBoxes.forEach((l) => { l.querySelector('input').checked = on; }); saveDiceSel(); };
   const diceSection = section('Tag würfeln',

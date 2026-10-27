@@ -59,10 +59,19 @@ export function activityStats(activities, day, { weeks = 0, excluded = [] } = {}
   return { days, templates, itemsPerDay: median(counts), minutesPerDay: median(sums) };
 }
 
-/** Alle selbst eingetragenen Tätigkeiten als Auswahl für die Würfel-Einstellungen (häufigste zuerst). */
+/**
+ * Alle selbst eingetragenen Tätigkeiten als Auswahl für die Würfel-Einstellungen (häufigste zuerst).
+ * `label`: Bezeichnung – bei gleicher Bezeichnung mit Beschreibung, damit die Einträge unterscheidbar sind.
+ */
 export function diceCandidates(activities, excluded = []) {
   const skip = new Set(excluded);
-  return activityStats(activities, '', { weeks: 0 }).templates.map((t) => ({ key: t.key, title: t.title, category: t.category, daysWith: t.daysWith, included: !skip.has(t.key) }));
+  const list = activityStats(activities, '', { weeks: 0 }).templates;
+  const count = new Map();
+  for (const t of list) count.set(t.title.toLowerCase(), (count.get(t.title.toLowerCase()) || 0) + 1);
+  return list.map((t) => ({
+    key: t.key, title: t.title, description: t.description, category: t.category, daysWith: t.daysWith, included: !skip.has(t.key),
+    label: count.get(t.title.toLowerCase()) > 1 && t.description ? `${t.title} – ${t.description}` : t.title,
+  }));
 }
 
 /** Gewichtete Auswahl ohne Zurücklegen. */

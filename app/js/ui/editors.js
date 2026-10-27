@@ -573,7 +573,7 @@ export function diceDialog(app, day, { activities, openMin, settings }) {
         await persist();
         reroll();
       },
-    }, c.title);
+    }, c.label);
     return b;
   });
   const weeksSel = h('select', {
