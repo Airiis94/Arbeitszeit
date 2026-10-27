@@ -108,7 +108,7 @@ export async function renderActivities(app, params) {
       : h('p', { class: 'muted' }, 'Für diesen Tag sind noch keine Tätigkeiten dokumentiert.'),
     openDays.length ? h('div', { class: 'card', 'data-testid': 'open-days' },
       h('div', { class: 'card-head' }, h('h2', null, `Noch offene Tage (${openDays.length})`)),
-      h('p', { class: 'muted small' }, 'Tage der letzten 12 Wochen, an denen die Tätigkeiten noch nicht der Netto-Arbeitszeit entsprechen. Antippen zum Ergänzen.'),
+      h('p', { class: 'muted small' }, 'Tätigkeiten passen noch nicht zur Netto-Arbeitszeit (letzte 12 Wochen).'),
       openDayList(openDays.slice(0, 5)),
       openDays.length > 5 ? h('details', { class: 'more' },
         h('summary', null, `Weitere ${Math.min(openDays.length, 20) - 5} anzeigen`), openDayList(openDays.slice(5, 20))) : null) : null,

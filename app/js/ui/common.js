@@ -40,7 +40,7 @@ export function stampText(st, day) {
  * Liste der Arbeitsphasen und Pausen eines Tages (chronologisch) mit gebuchten Viertelstunden.
  * @param booking Ergebnis von bookDay; @param onChoose (stamp) => …  gebuchte Zeit wählen
  */
-export function entryList(day, dayCalc, { onEdit, onDelete, booking, onChoose } = {}) {
+export function entryList(day, dayCalc, { onEdit, onDelete, booking, onChoose, hideExact = false } = {}) {
   const items = [
     ...dayCalc.sessions.map((s) => ({ rec: s, t: s.start ?? 0 })),
     ...dayCalc.breaks.map((b) => ({ rec: b, t: b.start ?? Number.MAX_SAFE_INTEGER })),
@@ -61,7 +61,8 @@ export function entryList(day, dayCalc, { onEdit, onDelete, booking, onChoose } 
     } else {
       range = `${fmtDuration(bk ? bk.durationMin : rec.durationMin)} (nur Dauer)`;
     }
-    const stamps = bk ? bk.stamps : [];
+    // genau getroffene Zeiten nur dort zeigen, wo bearbeitet wird (Tagesansicht)
+    const stamps = (bk ? bk.stamps : []).filter((st) => !(hideExact && st.dir === 'exact' && !st.manual));
     return h('li', { class: `entry entry-${rec.kind}${issueIds.has(rec.id) ? ' entry-issue' : ''}` },
       h('div', { class: 'entry-main' },
         h('div', { class: 'entry-head' },

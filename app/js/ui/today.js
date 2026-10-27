@@ -1,12 +1,12 @@
-// Ansicht „Heute“: Stempeluhr, gebuchte Viertelstunden und Zeitkonto der Differenzminuten.
+// Ansicht „Heute“: Stempeluhr, Tätigkeit erfassen und die Buchungen des Tages – bewusst schlank.
 
 import { h } from './dom.js';
 import { computeDay, computeAccount, dayRow, activityCheck } from '../core/calc.js';
 import { activityTemplates } from '../core/memory.js';
 import { deriveState } from '../core/state.js';
-import { bookDay, suggestLeave, bookingInterval } from '../core/booking.js';
+import { bookDay, bookingInterval } from '../core/booking.js';
 import { fmtDuration, fmtDate, timeOfDay, todayKey, fmtDateTime, HOUR_MS } from '../core/time.js';
-import { signed, entryList, statusBadge, backupState, issueList } from './common.js';
+import { entryList, statusBadge, backupState, issueList } from './common.js';
 import { quickBreak, editBreakDialog, editWorkDialog, undoToast, chooseBookingDialog, deleteIntervalFlow, quickActivityDialog } from './editors.js';
 import { icon } from './icons.js';
 
@@ -28,10 +28,19 @@ export async function renderToday(app) {
   const acc = computeAccount({ ...data, settings, today, now });
   const row = acc.rowsByDay.get(workDay) || dayRow(workDay, dayIntervals, info, settings, now, interval);
 
-  let phaseInfo = d.sessions.length ? '–' : 'Heute noch nicht eingestempelt';
-  if (st.mode === 'working') phaseInfo = `seit ${st.session.day === today ? timeOfDay(st.session.start) : fmtDateTime(st.session.start)} · ${fmtDuration(d.netMin)} h gearbeitet`;
-  if (st.mode === 'break') phaseInfo = `Pause seit ${timeOfDay(st.brk.start)} · Arbeit seit ${timeOfDay(st.session.start)}`;
-  if (st.mode === 'idle' && d.lastEnd) phaseInfo = `Feierabend um ${timeOfDay(d.lastEnd)}`;
+  // Stand des Tages in einer Zeile: nach Feierabend gebucht (Raster), während der Arbeit laufend
+  const closed = booking.bookedNetMin != null && d.sessions.length > 0;
+  const netMin = closed ? row.bookedNetMin : d.netMin;
+  const breakMin = closed ? row.bookedBreakMin : d.breakMin + d.autoBreakMin;
+  const netEl = h('b', { class: 'num', 'data-testid': 'net' }, fmtDuration(netMin));
+  const breakEl = h('span', { class: 'num', 'data-testid': 'breaks' }, fmtDuration(breakMin));
+  const since = st.mode !== 'idle' ? (st.session.day === today ? timeOfDay(st.session.start) : fmtDateTime(st.session.start)) : '';
+  let phaseInfo = ['Heute noch nicht eingestempelt'];
+  if (st.mode === 'working') phaseInfo = [`seit ${since} · `, netEl, ' h gearbeitet', breakMin ? [' · Pause ', breakEl] : null];
+  if (st.mode === 'break') phaseInfo = [`Pause seit ${timeOfDay(st.brk.start)} · `, netEl, ' h gearbeitet · Pausen ', breakEl];
+  if (st.mode === 'idle' && d.sessions.length) {
+    phaseInfo = [d.lastEnd ? `Feierabend ${timeOfDay(d.lastEnd)} · ` : '', netEl, ` h ${closed && quarter ? 'gebucht' : 'gearbeitet'} · Pause `, breakEl];
+  }
 
   const warnings = [];
   if (st.mode !== 'idle' && now - st.session.start > 12 * HOUR_MS) {
@@ -79,39 +88,11 @@ export async function renderToday(app) {
     actions = [bigBtn(icon('play', { fill: true }), 'Pause beenden', 'btn-resume', 'resume', 'btn-resume'), bigBtn(icon('stop', { fill: true }), 'Feierabend', 'btn-end', 'end', 'btn-end')];
   }
 
-  const quick = h('div', { class: 'quick' },
-    h('span', { class: 'quick-label' }, 'Pause nachtragen (Minuten):'),
-    [15, 30, 45, 60].map((m) => h('button', { type: 'button', class: 'chip', onclick: () => quickBreak(app, workDay, m) }, `${m}`)),
-    h('button', { type: 'button', class: 'chip', onclick: () => editBreakDialog(app, workDay, null, d.sessions) }, '…'));
-
-  // Kennzahlen des Tages: nach Feierabend gebucht (Raster), während der Arbeit laufend
-  const metric = (label, value, sub, cls = '') => h('div', { class: `metric ${cls}` },
-    h('div', { class: 'metric-label' }, label), h('div', { class: 'metric-value' }, value), sub ? h('div', { class: 'metric-sub' }, sub) : null);
-  const closed = booking.bookedNetMin != null && d.sessions.length;
-  const workMetric = closed
-    ? metric('Arbeitszeit', h('span', { class: 'num', 'data-testid': 'net' }, fmtDuration(row.bookedNetMin)), quarter ? `gestempelt ${fmtDuration(d.netMin)}` : null)
-    : metric('Arbeitszeit', h('span', { class: 'num', 'data-testid': 'net' }, fmtDuration(d.netMin)),
-      booking.firstBooked != null ? (quarter ? `gebucht ab ${timeOfDay(booking.firstBooked)}` : `ab ${timeOfDay(booking.firstBooked)}`) : 'noch nicht begonnen');
-  const breakMetric = closed
-    ? metric('Pause', h('span', { class: 'num', 'data-testid': 'breaks' }, fmtDuration(row.bookedBreakMin)), quarter ? `gestempelt ${fmtDuration(d.breakMin + d.autoBreakMin)}` : null)
-    : metric('Pause', h('span', { class: 'num', 'data-testid': 'breaks' }, fmtDuration(d.breakMin + d.autoBreakMin)),
-      d.openBreak ? `läuft seit ${timeOfDay(d.openBreak.start)}` : d.breaks.length ? `${d.breaks.length} Pause${d.breaks.length === 1 ? '' : 'n'}` : 'keine');
-  const diffCount = booking.stamps.filter((x) => x.effect !== 0).length;
-  const diffMetric = quarter ? metric('Differenz', h('span', { 'data-testid': 'diff' }, signed(booking.effect)),
-    diffCount ? `aus ${diffCount} Stempel${diffCount === 1 ? '' : 'n'}` : 'keine') : null;
-
-  // Vorschlag zum Ausgleich beim Gehen (nur während der Arbeit)
-  let leaveMetric = null;
-  if (quarter && st.mode !== 'idle') {
-    const sug = suggestLeave(now, acc.balance, interval);
-    if (sug) {
-      const rest = acc.balance + sug.effect;
-      const text = sug.effect === 0
-        ? 'zur vollen Viertelstunde gehen – Konto bleibt ±0'
-        : `gebucht ${timeOfDay(sug.booked)} (${fmtDuration(sug.effect, { sign: true })}), danach ${rest !== 0 ? `Konto ${fmtDuration(rest, { sign: true })}` : 'Konto ±0'}`;
-      leaveMetric = metric('Ausgleichen: gehen um', h('span', { class: 'num', 'data-testid': 'leave' }, timeOfDay(sug.leave)), text);
-    }
-  }
+  const quick = h('details', { class: 'quick quick-fold' },
+    h('summary', null, '+ Pause nachtragen'),
+    h('div', { class: 'quick-chips' },
+      [15, 30, 45, 60].map((m) => h('button', { type: 'button', class: 'chip', 'aria-label': `${m} Minuten Pause nachtragen`, onclick: () => quickBreak(app, workDay, m) }, `${m} min`)),
+      h('button', { type: 'button', class: 'chip', onclick: () => editBreakDialog(app, workDay, null, d.sessions) }, 'Uhrzeit …')));
 
   // Tätigkeiten schnell erfassen: Eingabe · Uhr (Dauer) · noch zu vergebende Zeit
   const chk = activityCheck(row, data.activities);
@@ -144,20 +125,6 @@ export async function renderToday(app) {
       }, h('span', { class: 'rest-label' }, restLabel), h('b', null, restValue))),
     h('datalist', { id: 'quick-act-list' }, templates.slice(0, 50).map((t) => h('option', { value: t.title }))));
 
-  const todayCard = h('div', { class: 'card' },
-    h('div', { class: 'card-head' }, h('h2', null, `Heute · ${fmtDate(workDay, { year: false })}`),
-      quarter ? h('span', { class: 'muted small' }, closed ? 'gebucht' : 'bisher') : null),
-    h('div', { class: 'metrics' }, workMetric, breakMetric, diffMetric));
-
-  const accountCard = h('div', { class: 'card' },
-    h('div', { class: 'account-row' },
-      h('div', { class: 'metric' },
-        h('div', { class: 'metric-label' }, 'Zeitkonto'),
-        h('div', { class: 'metric-value big' }, h('span', { 'data-testid': 'balance' }, signed(acc.balance))),
-        h('div', { class: 'metric-sub' }, quarter ? 'Differenzminuten, inkl. heute' : 'minutengenau: nur Anfangssaldo und Korrekturen')),
-      leaveMetric),
-    h('a', { class: 'card-link', href: '#/konto' }, 'Zeitkonto im Detail →'));
-
   return h('section', { class: 'view view-today' },
     h('div', { class: `status-card status-${st.mode}` },
       h('div', { class: 'status-top' },
@@ -170,22 +137,19 @@ export async function renderToday(app) {
     quickAct,
     warnings,
     issueList(d.issues.filter((i) => i.code !== 'stale-open')),
-    todayCard,
-    accountCard,
     h('div', { class: 'card' },
       h('div', { class: 'card-head' },
         h('h2', null, 'Buchungen'),
         h('a', { class: 'btn btn-small', href: `#/tag/${workDay}` }, 'Tag bearbeiten')),
       entryList(workDay, d, {
         booking,
+        hideExact: true,
         onChoose: quarter ? (s) => chooseBookingDialog(app, data.intervals, s, workDay, interval, acc.balance) : null,
         // Arbeitszeit/Pause direkt hier ändern (Beginn, Ende, Dauer)
         onEdit: (rec) => (rec.kind === 'work' ? editWorkDialog(app, workDay, rec) : editBreakDialog(app, workDay, rec, d.sessions)),
         // versehentlich gestempelt → direkt hier löschen (Pausen der Arbeitsphase werden mitgelöscht)
         onDelete: (rec) => deleteIntervalFlow(app, rec),
       }),
-      quarter && booking.stamps.length
-        ? h('p', { class: 'muted small' }, '✎ an einer Zeit: gebuchte Viertelstunde wählen – die Differenz geht ins Zeitkonto.') : null,
-      h('a', { class: 'card-link', href: `#/taetigkeiten/${workDay}` }, 'Tätigkeiten erfassen →')),
+    ),
   );
 }

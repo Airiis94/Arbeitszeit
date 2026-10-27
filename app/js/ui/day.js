@@ -54,16 +54,23 @@ export async function renderDay(app, params) {
     two('Gehen', d.openSession ? 'läuft' : timeOrDash(d.lastEnd), d.openSession ? 'läuft' : timeOrDash(row.bookedLast)),
     two('Pausen', fmtDuration(d.breakMin + d.autoBreakMin), fmtDuration(row.bookedBreakMin)),
     two('Arbeitszeit', fmtDuration(d.netMin), row.bookedNetMin == null ? '–' : fmtDuration(row.bookedNetMin), 'strong')));
+  // Differenzen zum Zeitkonto direkt unter der Tabelle – eine Karte statt zwei
   const diffs = booking.stamps.filter((x) => x.dir !== 'exact');
-  const diffCard = h('div', { class: 'card' },
-    h('div', { class: 'card-head' }, h('h2', null, 'Zeitkonto an diesem Tag')),
-    diffs.length ? h('table', { class: 'calc', 'data-testid': 'deviation' }, h('tbody', null,
-      diffs.map((x) => h('tr', null, h('th', { scope: 'row' }, stampText(x, day).replace(/ \([^)]*\)$/, '')), h('td', null, signed(x.effect)))),
-      h('tr', { class: 'strong' }, h('th', { scope: 'row' }, 'Differenz des Tages'), h('td', null, signed(row.effect))),
-      row.correction ? h('tr', null, h('th', { scope: 'row' }, 'Korrektur an diesem Tag'), h('td', null, signed(row.correction))) : null,
-      row.balance != null ? h('tr', null, h('th', { scope: 'row' }, 'Zeitkonto nach dem Tag'), h('td', null, signed(row.balance))) : null))
-      : h('p', { class: 'muted' }, bookingInterval(settings) === 1 ? 'Minutengenaue Erfassung: gebucht wird genau wie gestempelt, es entstehen keine Differenzminuten.' : d.sessions.length ? 'Alle Zeiten liegen genau auf der Viertelstunde – keine Differenz.' : 'Noch keine Buchungen.'),
-    diffs.length ? h('p', { class: 'muted small' }, 'Die Differenz zwischen gestempelter und gebuchter Zeit geht ins Zeitkonto. In der Liste oben eine Zeit (✎) antippen, um die gebuchte Zeit zu wählen.') : null);
+  const quarter = bookingInterval(settings) > 1;
+  const diffTable = quarter && d.sessions.length ? h('table', { class: 'calc calc-diff', 'data-testid': 'deviation' }, h('tbody', null,
+    diffs.map((x) => h('tr', null, h('th', { scope: 'row' }, stampText(x, day).replace(/ \([^)]*\)$/, '')), h('td', null, signed(x.effect)))),
+    h('tr', { class: 'strong' }, h('th', { scope: 'row' }, 'Differenz des Tages'), h('td', null, signed(row.effect))),
+    row.correction ? h('tr', null, h('th', { scope: 'row' }, 'Korrektur an diesem Tag'), h('td', null, signed(row.correction))) : null,
+    row.balance != null ? h('tr', null, h('th', { scope: 'row' }, 'Zeitkonto nach dem Tag'), h('td', null, signed(row.balance))) : null)) : null;
+
+  // Tätigkeiten des Tages in einer Zeile
+  const chk = activityCheck(row, data.activities);
+  let actState = null;
+  if (chk.target > 0 || chk.sum > 0) {
+    actState = chk.gap === 0 ? h('span', { class: 'pos' }, '✓ passt')
+      : chk.gap > 0 ? h('span', { class: 'neg' }, `noch ${fmtDuration(chk.gap)} offen`)
+        : h('span', { class: 'neg' }, `${fmtDuration(-chk.gap)} zu viel`);
+  }
 
   const sessionsEdit = {
     onEdit: (rec) => (rec.kind === 'work' ? editWorkDialog(app, day, rec) : editBreakDialog(app, day, rec, d.sessions)),
@@ -89,38 +96,30 @@ export async function renderDay(app, params) {
       h('div', { class: 'btn-row btn-row-tight' },
         h('button', { type: 'button', class: 'btn', onclick: () => editWorkDialog(app, day) }, '+ Arbeitsphase'),
         h('button', { type: 'button', class: 'btn', onclick: () => editBreakDialog(app, day, null, d.sessions) }, '+ Pause')),
-      h('div', { class: 'quick' },
-        h('span', { class: 'quick-label' }, 'Pause ohne Uhrzeit nachtragen (Minuten):'),
-        [15, 30, 45, 60].map((m) => h('button', { type: 'button', class: 'chip', onclick: () => quickBreak(app, day, m) }, `${m}`)))),
-    diffCard,
-    h('div', { class: 'card' },
+      h('details', { class: 'quick quick-fold' },
+        h('summary', null, '+ Pause ohne Uhrzeit (nur Dauer)'),
+        h('div', { class: 'quick-chips' },
+          [15, 30, 45, 60].map((m) => h('button', { type: 'button', class: 'chip', onclick: () => quickBreak(app, day, m) }, `${m} min`))))),
+    d.sessions.length || d.breaks.length ? h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('h2', null, 'Gestempelt und gebucht')),
-      table),
-    h('div', { class: 'card' },
-      h('div', { class: 'card-head' },
-        h('h2', null, 'Tagesangaben'),
-        h('button', { type: 'button', class: 'btn btn-small', 'data-testid': 'day-info-edit', onclick: () => editDayInfoDialog(app, day, info, { typicalMin: typicalNetMin(acc) }) }, 'Bearbeiten')),
-      h('p', null, `Tagesart: ${(DAY_TYPES[info?.dayType || 'arbeit'] || DAY_TYPES.arbeit).label}`),
-      row.creditMin ? h('p', { 'data-testid': 'credit-info' }, h('b', null, `${fmtDuration(row.creditMin)} Std. als Arbeitszeit angerechnet`),
-        info.creditStart && info.creditEnd ? ` (${info.creditStart}–${info.creditEnd})` : '', h('span', { class: 'muted small' }, ' – zählt zur Netto-Arbeitszeit, nicht zum Zeitkonto.')) : null,
-      info?.dayType !== 'urlaub' ? h('button', {
-        type: 'button', class: 'btn btn-small', 'data-testid': 'vacation-add',
-        onclick: () => vacationDialog(app, day, { typicalMin: typicalNetMin(acc), dayInfos: data.dayInfos }),
-      }, '🏖 Urlaub eintragen') : null,
-      info?.note ? h('p', { class: 'note' }, info.note) : null),
-    h('div', { class: 'card' },
-      h('div', { class: 'card-head' },
-        h('h2', null, 'Tätigkeiten'),
-        h('a', { class: 'btn btn-small', href: `#/taetigkeiten/${day}` }, 'Öffnen')),
-      h('p', null, acts.length ? `${acts.length} Tätigkeit(en), zusammen ${fmtDuration(actSum)}.` : 'Keine Tätigkeiten dokumentiert.'),
-      (() => {
-        const chk = activityCheck(row, data.activities);
-        if (chk.target === 0 && chk.sum === 0) return null;
-        if (chk.gap === 0) return h('p', { class: 'pos small' }, '✓ entspricht genau der Netto-Arbeitszeit.');
-        return h('p', { class: 'neg small' }, chk.gap > 0
-          ? `Noch ${fmtDuration(chk.gap)} zuzuordnen (Netto-Arbeitszeit ${fmtDuration(chk.target)}).`
-          : `${fmtDuration(-chk.gap)} mehr als die Netto-Arbeitszeit (${fmtDuration(chk.target)}).`);
-      })()),
+      table,
+      diffTable) : null,
+    h('div', { class: 'card day-facts' },
+      h('div', { class: 'fact-row' },
+        h('div', null, h('div', { class: 'fact-label' }, 'Tagesart'), h('div', null, (DAY_TYPES[info?.dayType || 'arbeit'] || DAY_TYPES.arbeit).label)),
+        h('div', { class: 'fact-actions' },
+          info?.dayType !== 'urlaub' ? h('button', {
+            type: 'button', class: 'btn btn-small', 'data-testid': 'vacation-add',
+            onclick: () => vacationDialog(app, day, { typicalMin: typicalNetMin(acc), dayInfos: data.dayInfos }),
+          }, '🏖 Urlaub') : null,
+          h('button', { type: 'button', class: 'btn btn-small', 'data-testid': 'day-info-edit', onclick: () => editDayInfoDialog(app, day, info, { typicalMin: typicalNetMin(acc) }) }, 'Bearbeiten'))),
+      row.creditMin ? h('p', { class: 'small', 'data-testid': 'credit-info' }, h('b', null, `${fmtDuration(row.creditMin)} Std. als Arbeitszeit angerechnet`),
+        info.creditStart && info.creditEnd ? ` (${info.creditStart}–${info.creditEnd})` : '', h('span', { class: 'muted' }, ' – zählt zur Netto-Arbeitszeit, nicht zum Zeitkonto.')) : null,
+      info?.note ? h('p', { class: 'note' }, info.note) : null,
+      h('a', { class: 'fact-row fact-link', href: `#/taetigkeiten/${day}` },
+        h('div', null, h('div', { class: 'fact-label' }, 'Tätigkeiten'),
+          h('div', null, acts.length ? `${acts.length} · ${fmtDuration(actSum)} Std.` : 'keine', actState ? [' · ', actState] : null)),
+        h('span', { class: 'fact-go', 'aria-hidden': 'true' }, '›'))),
     h('details', { class: 'card' },
       h('summary', null, `Änderungsprotokoll (${audit.length})`),
       audit.length ? h('ul', { class: 'audit' }, audit.map((a) => h('li', null, auditText(a))))

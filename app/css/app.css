@@ -451,7 +451,7 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .entry-issue { background: var(--error-bg); border-color: var(--neg); }
 .entry-src { color: var(--muted); font-size: 0.7rem; }
 .entry-dur { color: var(--muted); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
-.entry-stamps { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+.entry-stamps { display: flex; flex-wrap: wrap; gap: 0 10px; margin: 2px 0 0; }
 .stamp {
   font: inherit;
   font-size: 0.82rem;
@@ -459,15 +459,16 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
   font-variant-numeric: tabular-nums;
 }
 .stamp-btn {
-  min-height: 36px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
+  min-height: 34px;
+  padding: 2px 8px 2px 0;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text);
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
   text-align: left;
 }
+.stamp-manual { padding-left: 8px; color: var(--text); }
 .stamp-manual { border-color: var(--primary); background: var(--info-bg); }
 .stamp-alt { color: var(--primary); font-weight: 700; white-space: nowrap; }
 
@@ -606,8 +607,6 @@ tr.clickable:active { background: var(--surface-2); }
 
 /* ---------- Einstellungen ---------- */
 
-.jump { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; margin: 0 -2px; scrollbar-width: none; }
-.jump .chip { flex: none; min-height: 38px; font-size: 0.88rem; }
 .view-settings .card { scroll-margin-top: 72px; }
 .kv { list-style: none; padding: 0; margin: 0; }
 .kv li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
@@ -851,3 +850,38 @@ textarea.input { min-height: 80px; resize: vertical; }
 .ledger td, .ledger th { font-size: 0.88rem; padding: 7px 4px; }
 details.more { margin-top: 4px; }
 details.more > summary { cursor: pointer; color: var(--primary); font-weight: 700; padding: 8px 2px; min-height: 40px; }
+
+/* Aufklappbare Schnellwahl (Pause nachtragen) */
+.quick-fold { display: block; margin-top: 10px; }
+.quick-fold > summary { list-style: none; display: inline-flex; align-items: center; min-height: 40px; color: var(--primary); font-weight: 700; font-size: 0.95rem; }
+.quick-fold > summary::-webkit-details-marker { display: none; }
+.quick-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.quick-chips .chip { flex: 1 1 64px; white-space: nowrap; }
+.status-since b { font-weight: 800; }
+
+/* Tagesansicht: Tagesart und Tätigkeiten in einer Karte */
+.day-facts { display: flex; flex-direction: column; gap: 10px; }
+.fact-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.fact-label { font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.fact-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.fact-link { color: var(--text); text-decoration: none; border-top: 1px solid var(--border); padding-top: 10px; min-height: 48px; }
+.fact-go { font-size: 1.6rem; color: var(--muted); line-height: 1; }
+.calc-diff { margin-top: 10px; border-top: 2px solid var(--border); }
+
+.balance-detail { text-align: left; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 6px; }
+.balance-detail > summary { color: var(--primary); font-weight: 700; text-align: center; padding: 6px 0; }
+.week-actions .btn { flex-basis: 90px; }
+
+/* Einstellungen: aufklappbare Bereiche */
+.sec { padding: 0; }
+.sec > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px; min-height: 56px; }
+.sec > summary::-webkit-details-marker { display: none; }
+.sec-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sec-title { font-size: 1.05rem; font-weight: 800; }
+.sec-hint { font-size: 0.85rem; font-weight: 400; color: var(--muted); overflow-wrap: anywhere; }
+.sec-warn { color: var(--break); font-weight: 700; }
+.sec-chev { font-size: 1.5rem; color: var(--muted); line-height: 1; transition: transform 0.15s; flex: none; }
+.sec[open] .sec-chev { transform: rotate(90deg); }
+.sec-body { padding: 0 14px 14px; }
+.sec + .sec { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) { .sec-chev { transition: none; } }

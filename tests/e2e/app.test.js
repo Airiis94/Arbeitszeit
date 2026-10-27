@@ -85,6 +85,35 @@ async function rerender(p = page) {
   await p.waitForTimeout(100);
 }
 
+/** Zeitkonto-Stand wie auf der Zeitkonto-Seite (auf „Heute“ wird er nicht mehr angezeigt). */
+async function balance() {
+  return page.evaluate(async () => {
+    const { computeAccount } = await import('./js/core/calc.js');
+    const { todayKey } = await import('./js/core/time.js');
+    const { fmtDuration } = await import('./js/core/time.js');
+    const data = await window.__app.repo.loadAll();
+    const now = Date.now();
+    return fmtDuration(computeAccount({ ...data, today: todayKey(now), now }).balance, { sign: true });
+  });
+}
+
+async function waitBalance(expected) {
+  let got;
+  for (let k = 0; k < 50; k += 1) {
+    got = await balance();
+    if (got === expected) return;
+    await page.waitForTimeout(50);
+  }
+  assert.equal(got, expected);
+}
+
+/** Einstellungen öffnen, alle Bereiche aufgeklappt. */
+async function openSettings() {
+  await page.goto(`${base}#/einstellungen`);
+  await page.waitForSelector('details.sec');
+  await page.evaluate(() => document.querySelectorAll('details.sec').forEach((d) => { d.open = true; }));
+}
+
 async function workday() {
   await setTime(t(DAY, '08:00'));
   await click('btn-start');
@@ -104,8 +133,8 @@ test('Arbeitstag mit wenigen Klicks erfassen; gebucht wird auf Viertelstunden', 
   await workday(); // 08:00–16:40, Pause 12:00–12:30
   assert.equal(await text('net'), '8:15'); // gebucht 08:00–16:45 − 0:30
   assert.equal(await text('breaks'), '0:30');
-  assert.equal(await text('diff'), '−0:05'); // Gehen 16:40 → gebucht 16:45
-  assert.equal(await text('balance'), '−0:05');
+  assert.match(await page.textContent('[data-testid=stamp-end-work]'), /Gehen 16:40 → 16:45 \(−0:05\)/);
+  assert.equal(await page.$('[data-testid=balance]'), null, 'kein Zeitkonto mehr auf „Heute“');
   await page.goto(`${base}#/konto`);
   await page.waitForSelector('[data-testid=account-balance]');
   assert.equal(await text('account-balance'), '−0:05');
@@ -196,7 +225,8 @@ test('Pause per Schnellwahl nachtragen und wieder löschen', async () => {
   await click('btn-start');
   await waitStatus('Arbeit läuft');
   await setTime(t(DAY, '14:00'));
-  await page.click('.quick .chip:has-text("30")');
+  await page.click('.quick-fold summary');
+  await page.click('.quick-fold .chip:has-text("30 min")');
   await page.waitForFunction(() => document.querySelector('[data-testid=breaks]')?.textContent === '0:30');
   assert.equal(await text('net'), '5:30');
   await page.goto(`${base}#/tag/${DAY}`);
@@ -506,7 +536,7 @@ test('Tag würfeln: festhalten, Auswahl, gewürfelte zählen nicht zur Statistik
   const manual = await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.filter((a) => a.day === '2026-03-02' && !a.deleted && a.source !== 'dice').length);
   assert.equal(manual, 1);
   // Einstellungen zeigen dieselbe Auswahl; dort wieder aufnehmen
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   await page.waitForSelector('[data-testid=dice-settings]');
   const boxes = await page.$$eval('[data-testid=dice-setting]', (els) => els.map((e) => [e.parentElement.textContent.split(' · ')[0].trim(), e.checked]));
   assert.deepEqual(Object.fromEntries(boxes), { Versenden: true, 'Patch löten': true, Prüfen: true, Kommissionieren: false });
@@ -576,7 +606,7 @@ test('Korrektur mit Begründung verändert den Saldo', async () => {
 test('Export → Löschen → Import stellt alle Daten wieder her', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'az-'));
   await workday();
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   const [download] = await Promise.all([page.waitForEvent('download'), click('export')]);
   const file = join(dir, download.suggestedFilename());
   await download.saveAs(file);
@@ -589,7 +619,7 @@ test('Export → Löschen → Import stellt alle Daten wieder her', async () => 
   await page.evaluate(() => window.__app.repo.wipe());
   assert.equal((await intervals()).length, 0);
 
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), click('import')]);
   await chooser.setFiles(file);
   await page.waitForSelector('dialog');
@@ -611,7 +641,7 @@ test('Sicherungskopie auf dem Gerät: früheren Stand wiederherstellen, aktuelle
     await r.deleteActivity((await r.loadAll()).activities[0].id);
   });
   assert.equal(await page.evaluate(async () => (await window.__app.repo.loadAll()).activities.length), 0);
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   await page.waitForSelector('[data-testid=snapshots]');
   assert.match(await text('snapshots'), /Test\s*1 Buchungen|Test.*2 Buchungen/s);
   await page.click('[data-testid=snapshots] li:has-text("Test") [data-testid=snapshot-restore]');
@@ -643,7 +673,7 @@ test('Fehlerhafte Importdatei wird abgelehnt, Daten bleiben unverändert', async
   await workday();
   const bad = join(dir, 'kaputt.json');
   await writeFile(bad, '{"format":"arbeitszeit-backup","schemaVersion":1,"data":{"intervals":[{"id":1}]');
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), click('import')]);
   await chooser.setFiles(bad);
   await page.waitForSelector('dialog:has-text("Import nicht möglich")');
@@ -826,7 +856,7 @@ test('Hilfe & Installation ist über den Kopfbereich erreichbar und mobil lesbar
   }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
   // Auch aus den Einstellungen erreichbar
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   await page.click('a:has-text("Hilfe & Installationsanleitung")');
   await page.waitForSelector('h1:has-text("Hilfe & Installation")');
 });
@@ -875,13 +905,11 @@ test('Zeitkonto: 08:50 → 08:45 (−0:05), andere Viertelstunde wählbar (09:00
   await setTime(t(DAY, '08:50'));
   await click('btn-start');
   await waitStatus('Arbeit läuft');
-  assert.equal(await text('diff'), '−0:05');
-  assert.equal(await text('balance'), '−0:05');
+  assert.match(await page.textContent('[data-testid=stamp-start-work]'), /Kommen 08:50 → 08:45 \(−0:05\)/);
+  assert.equal(await balance(), '−0:05');
   assert.equal(await page.textContent('[data-testid=booked-range]'), '08:45 – läuft');
-  // Vorschlag zum Ausgleich: 5 Minuten nach einer Viertelstunde gehen
   await setTime(t(DAY, '16:10'));
   await rerender();
-  assert.equal(await text('leave'), '16:20');
   // Andere Viertelstunde wählen: 09:00 statt 08:45 → +0:10
   await page.click('[data-testid=stamp-start-work]');
   await page.waitForSelector('[data-testid=booking-choices]');
@@ -889,7 +917,7 @@ test('Zeitkonto: 08:50 → 08:45 (−0:05), andere Viertelstunde wählbar (09:00
   assert.ok(labels.includes('08:30') && labels.includes('08:45') && labels.includes('09:00') && labels.includes('09:15'), labels.join(','));
   assert.match(await page.textContent('[data-testid=booking-choices] button[data-booked="09:00"]'), /\+0:10.*Konto \+0:10/);
   await page.click('[data-testid=booking-choices] button[data-booked="09:00"]');
-  await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '+0:10');
+  await waitBalance('+0:10');
   const rec = (await intervals())[0];
   assert.equal(rec.startBooked, t(DAY, '09:00').getTime());
   assert.equal(rec.start, t(DAY, '08:50').getTime()); // gestempelte Zeit bleibt unverändert
@@ -897,13 +925,13 @@ test('Zeitkonto: 08:50 → 08:45 (−0:05), andere Viertelstunde wählbar (09:00
   // Zurück auf die nächstgelegene (Standard) → keine Wahl gespeichert
   await page.click('[data-testid=stamp-start-work]');
   await page.click('[data-testid=booking-choices] button[data-booked="08:45"]');
-  await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '−0:05');
+  await waitBalance('−0:05');
   assert.equal((await intervals())[0].startBooked, null);
   // Gehen 17:49 → 17:45: +0:04 → Konto −0:01
   await setTime(t(DAY, '17:49'));
   await click('btn-end');
   await waitStatus('Nicht eingestempelt');
-  assert.equal(await text('balance'), '−0:01');
+  assert.equal(await balance(), '−0:01');
   assert.equal(await page.textContent('[data-testid=booked-range]'), '08:45 – 17:45');
   // 8 Stunden sind kein Muss: kurzer Tag, kein Minus
   await page.goto(`${base}#/tag/${DAY}`);
@@ -925,35 +953,35 @@ test('Feierabend früher, aber spätere Viertelstunde buchen (Konto nutzen); Erf
   await setTime(t(DAY, '17:20'));
   await click('btn-end');
   await waitStatus('Nicht eingestempelt');
-  assert.equal(await text('balance'), '+0:35'); // Gehen 17:20 → 17:15 = +0:05
+  assert.equal(await balance(), '+0:35'); // Gehen 17:20 → 17:15 = +0:05
   // Bis 17:45 buchen: −0:25 statt +0:05 → Konto +0:30 − 0:25 = +0:05
   await page.click('[data-testid=stamp-end-work]');
   assert.match(await page.textContent('[data-testid=booking-choices] button[data-booked="17:45"]'), /−0:25.*Konto \+0:05/);
   await page.click('[data-testid=booking-choices] button[data-booked="17:45"]');
-  await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '+0:05');
+  await waitBalance('+0:05');
   assert.equal(await page.textContent('[data-testid=booked-range]'), '08:45 – 17:45');
   assert.equal(await text('net'), '9:00'); // gebucht 08:45–17:45, keine Pause gestempelt
   // Erfassungsart minutengenau: gebucht = gestempelt, kein Differenzkonto
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   await page.selectOption('[data-testid=tracking-mode]', 'exact');
   await page.click('form:has([data-testid=tracking-mode]) button[type=submit]');
   await page.click('dialog button[type=submit]');
   await page.waitForSelector('dialog', { state: 'detached' });
   await page.goto(`${base}#/heute`);
-  await page.waitForSelector('[data-testid=balance]');
-  assert.equal(await text('balance'), '+0:30');
+  await page.waitForSelector('[data-testid=booked-range]');
+  assert.equal(await balance(), '+0:30');
   assert.equal(await page.textContent('[data-testid=booked-range]'), '08:45 – 17:20');
-  assert.equal(await page.$('[data-testid=diff]'), null);
   assert.equal(await page.$('[data-testid=stamp-end-work]'), null);
   // Die gewählte Buchung bleibt gespeichert und gilt wieder nach dem Zurückschalten
   assert.equal((await intervals())[0].endBooked, t(DAY, '17:45').getTime());
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   await page.selectOption('[data-testid=tracking-mode]', 'quarter');
   await page.click('form:has([data-testid=tracking-mode]) button[type=submit]');
   await page.click('dialog button[type=submit]');
   await page.waitForSelector('dialog', { state: 'detached' });
   await page.goto(`${base}#/heute`);
-  await page.waitForFunction(() => document.querySelector('[data-testid=balance]')?.textContent === '+0:05');
+  await waitBalance('+0:05');
+  await page.waitForSelector('[data-testid=stamp-end-work]');
 });
 
 test('Zeitkonto läuft über Wochen und Monate weiter: Übertrag sichtbar in Zeitkonto und Kalender', async () => {
@@ -1001,7 +1029,7 @@ test('Kurzer Tag erzeugt keine Minusstunden', async () => {
   await setTime(t(DAY, '11:00'));
   await click('btn-end');
   await waitStatus('Nicht eingestempelt');
-  assert.equal(await text('balance'), '0:00');
+  assert.equal(await balance(), '0:00');
   assert.equal(await text('net'), '2:15');
 });
 
@@ -1069,7 +1097,7 @@ test('Ausbildungsnachweis als Excel aus der Wochenansicht und den Einstellungen'
   assert.match(text, /Löten/);
   assert.match(text, /Werkstatt/);
 
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   await page.fill('[data-testid=report-from]', '2026-02-23');
   await page.fill('[data-testid=report-to]', '2026-03-08');
   const [dl2] = await Promise.all([page.waitForEvent('download'), click('export-report')]);
@@ -1090,7 +1118,7 @@ test('Sicherung teilen: als .txt (Chrome lehnt JSON ab), Ausweichen auf Download
   });
   await page.reload();
   await workday();
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   await page.click('button:has-text("Sicherung teilen")');
   await page.waitForFunction(() => !!window.__shared);
   const shared = await page.evaluate(() => window.__shared);
@@ -1115,7 +1143,7 @@ test('Sicherung teilen: als .txt (Chrome lehnt JSON ab), Ausweichen auf Download
   const file = join(dir, shared.name);
   await writeFile(file, shared.text);
   await page.evaluate(() => window.__app.repo.wipe());
-  await page.goto(`${base}#/einstellungen`);
+  await openSettings();
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), click('import')]);
   await chooser.setFiles(file);
   await page.waitForSelector('dialog');

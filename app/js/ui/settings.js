@@ -5,7 +5,7 @@ import { computeAccount } from '../core/calc.js';
 import { daysToCsv, activitiesToCsv } from '../core/csv.js';
 import { GRID_OPTIONS, TRACKING_MODES } from '../core/booking.js';
 import {
-  fmtDuration, parseDuration, fmtDateTime, todayKey, isValidDayKey, monthKey,
+  fmtDuration, parseDuration, fmtDate, fmtDateTime, todayKey, isValidDayKey, monthKey,
   firstOfMonth, lastOfMonth, startOfWeek, addDays,
 } from '../core/time.js';
 import { APP_VERSION, SCHEMA_VERSION } from '../core/model.js';
@@ -32,16 +32,20 @@ async function storageInfo() {
 
 const mb = (b) => (b == null ? '?' : `${(b / 1024 / 1024).toFixed(1)} MB`);
 
-function section(title, ...children) {
-  const id = `sec-${title.toLowerCase().replace(/[^a-zäöü]+/g, '-').replace(/-+$/, '')}`;
-  return h('div', { class: 'card', id }, h('h2', null, title), ...children);
-}
+// Aufgeklappte Bereiche bleiben beim Neuzeichnen (z. B. nach dem Speichern) offen
+const openSections = new Set();
 
-/** Sprungmarken zu den Abschnitten der (langen) Einstellungsseite. */
-function jumpNav(sections) {
-  return h('nav', { class: 'jump', 'aria-label': 'Abschnitte' }, sections.map(([label, el]) => h('button', {
-    type: 'button', class: 'chip', onclick: () => el.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-  }, label)));
+/** Aufklappbarer Bereich; zugeklappt zeigt `hint` den aktuellen Stand in einer Zeile. */
+function section(title, { hint = '', open = false, warn = false } = {}, ...children) {
+  const id = `sec-${title.toLowerCase().replace(/[^a-zäöü]+/g, '-').replace(/-+$/, '')}`;
+  return h('details', {
+    class: 'card sec', id, open: open || openSections.has(id),
+    ontoggle: (ev) => { if (ev.target.open) openSections.add(id); else openSections.delete(id); },
+  },
+    h('summary', null,
+      h('span', { class: 'sec-text' }, h('span', { class: 'sec-title' }, title), hint ? h('span', { class: `sec-hint${warn ? ' sec-warn' : ''}` }, hint) : null),
+      h('span', { class: 'sec-chev', 'aria-hidden': 'true' }, '›')),
+    h('div', { class: 'sec-body' }, ...children));
 }
 
 export async function renderSettings(app) {
@@ -78,7 +82,9 @@ export async function renderSettings(app) {
     }
   };
 
-  const backupSection = section('Sicherung',
+  const backupSection = section('Sicherung', {
+    hint: meta.lastExportAt ? `Zuletzt gesichert: ${fmtDateTime(meta.lastExportAt)}` : 'Noch nie gesichert', open: bs.level !== 'ok', warn: bs.level !== 'ok',
+  },
     h('div', { class: `notice notice-${bs.level === 'ok' ? 'ok' : bs.level}`, 'data-testid': 'backup-state' }, bs.text),
     h('p', { class: 'small' },
       `Letzter Export: ${meta.lastExportAt ? `${fmtDateTime(meta.lastExportAt)} (${meta.lastExportName || ''})` : 'noch nie'}`,
@@ -90,12 +96,9 @@ export async function renderSettings(app) {
       h('button', { type: 'button', class: 'btn btn-primary', 'data-testid': 'export', onclick: () => exportBackup(app).catch(app.error) }, '⬇ Sicherung herunterladen (JSON)'),
       canShareFiles() ? h('button', { type: 'button', class: 'btn', onclick: () => shareBackup(app).catch(app.error) }, '↗ Sicherung teilen (z. B. Google Drive)') : null,
       h('button', { type: 'button', class: 'btn', 'data-testid': 'import', onclick: () => importFlow(app).catch(app.error) }, '⬆ Sicherung importieren …')),
-    h('p', { class: 'muted small' },
-      'Die Datei landet im Download-Ordner. Bitte zusätzlich an einen sicheren Ort kopieren (z. B. Google Drive, PC, USB-Stick). ',
-      'Eine automatische Hintergrund-Sicherung gibt es bewusst nicht – der Browser kann sie nicht zuverlässig garantieren.'),
+    h('p', { class: 'muted small' }, 'Die Datei landet im Download-Ordner – bitte zusätzlich an einen sicheren Ort kopieren (z. B. Google Drive, PC).'),
     h('h3', null, 'Automatische Sicherungskopien'),
-    h('p', { class: 'muted small' }, 'Vor jedem Update, vor jedem Import und einmal täglich legt die App eine vollständige Kopie aller Daten auf diesem Gerät ab. ',
-      'Damit lässt sich ein früherer Stand jederzeit zurückholen. Gegen das Löschen der Browserdaten oder Verlust des Handys hilft nur die heruntergeladene/geteilte Sicherung oben.'),
+    h('p', { class: 'muted small' }, 'Vor jedem Update, jedem Import und einmal täglich legt die App eine Kopie auf diesem Gerät ab. Gegen Verlust des Handys hilft nur die heruntergeladene Sicherung.'),
     snapshots.length ? h('ul', { class: 'snap-list', 'data-testid': 'snapshots' }, snapshots.map((sn) => h('li', null,
       h('div', null,
         h('b', null, fmtDateTime(sn.at)), ` · ${sn.reason}`,
@@ -117,14 +120,17 @@ export async function renderSettings(app) {
             } catch (e) { app.error(e); }
           },
         }, 'Wiederherstellen'))))) : h('p', { class: 'muted small' }, 'Noch keine Kopie vorhanden (wird angelegt, sobald Daten erfasst sind).'),
-    h('h3', null, 'CSV-Export (Auswertung)'),
-    h('div', { class: 'row-2' }, field('Monat', csvMonth), h('label', { class: 'check' }, csvAll, ' gesamter Zeitraum')),
-    h('div', { class: 'btn-row' },
-      h('button', { type: 'button', class: 'btn', onclick: () => exportCsv('days') }, 'Arbeitstage (CSV)'),
-      h('button', { type: 'button', class: 'btn', onclick: () => exportCsv('activities') }, 'Tätigkeiten (CSV)')));
+    h('details', { class: 'more' },
+      h('summary', null, 'CSV-Export (Auswertung)'),
+      h('div', { class: 'row-2' }, field('Monat', csvMonth), h('label', { class: 'check' }, csvAll, ' gesamter Zeitraum')),
+      h('div', { class: 'btn-row' },
+        h('button', { type: 'button', class: 'btn', onclick: () => exportCsv('days') }, 'Arbeitstage (CSV)'),
+        h('button', { type: 'button', class: 'btn', onclick: () => exportCsv('activities') }, 'Tätigkeiten (CSV)'))));
 
   // ----- Speicher -----
-  const storageSection = section('Lokaler Speicher',
+  const storageSection = section('Lokaler Speicher', {
+    hint: st.persisted ? 'Dauerhaft gespeichert' : st.persisted === false ? 'Nicht dauerhaft gespeichert' : `${mb(st.usage)} belegt`, warn: st.persisted === false,
+  },
     h('ul', { class: 'kv' },
       h('li', null, h('span', null, 'Datenbank (IndexedDB)'), h('b', { class: 'pos' }, 'verfügbar')),
       h('li', null, h('span', null, 'Dauerhafter Speicher'), st.persisted == null ? h('b', null, 'nicht unterstützt')
@@ -153,8 +159,8 @@ export async function renderSettings(app) {
   const repFrom = h('input', { type: 'date', class: 'input', value: weekStart, 'data-testid': 'report-from' });
   const repTo = h('input', { type: 'date', class: 'input', value: addDays(weekStart, 6), 'data-testid': 'report-to' });
   const setRange = (from, to) => { repFrom.value = from; repTo.value = to; };
-  const reportSection = section('Ausbildungsnachweis (Excel)',
-    h('p', { class: 'muted small' }, 'Erstellt eine Excel-Datei im Layout des Ausbildungsnachweises: ein Blatt pro Woche; neben dem Wochentag senkrecht die Tagesarbeitszeit und Pause, daneben die Tätigkeiten (Einzelstunden) und rechts die Ausbildungsabteilung (= Kategorie der Tätigkeit); je Tag Stunden gesamt (Arbeit + Pause), Pause und Stunden netto; Wochenarbeitszeit = Summe Stunden netto. Druckfertig auf einer A4-Seite. Zum direkten Drucken oder als PDF: Kalender → Woche → „Wochentabelle drucken / als PDF“.'),
+  const reportSection = section('Ausbildungsnachweis (Excel)', { hint: report.name ? `${report.name}${report.trainingStart ? ` · ab ${fmtDate(report.trainingStart)}` : ''}` : 'Name noch nicht eingetragen' },
+    h('p', { class: 'muted small' }, 'Excel-Datei im Layout des Ausbildungsnachweises: ein Blatt pro Woche, druckfertig auf A4. Die Ausbildungsabteilung ist die Kategorie der Tätigkeit. Drucken oder PDF: Kalender → Woche → „🖨 Drucken“.'),
     h('div', { class: 'row-2' },
       field('Name', repName),
       field('Ausbildungsbeginn', repStart, 'für Nachweis-Nr. und Ausbildungsjahr')),
@@ -177,7 +183,7 @@ export async function renderSettings(app) {
     }, '⬇ Ausbildungsnachweis herunterladen (Excel)'));
 
   // ----- Zeitkonto -----
-  const accountSection = section('Zeitkonto',
+  const accountSection = section('Zeitkonto & Erfassung', { hint: `ab ${fmtDate(settings.accountStart)} · ${settings.trackingMode === 'exact' ? 'minutengenau' : `${settings.rounding?.interval || 15}-Minuten-Raster`}` },
     h('form', {
       class: 'stack',
       onsubmit: async (ev) => {
@@ -236,7 +242,7 @@ export async function renderSettings(app) {
     h('span', null, c.label, h('span', { class: 'muted small' }, ` · ${[c.category, `${c.daysWith} Tag${c.daysWith === 1 ? '' : 'e'}`].filter(Boolean).join(' · ')}`))));
   const saveDiceSel = () => saveDice({ diceExcluded: diceBoxes.map((l) => l.querySelector('input')).filter((i) => !i.checked).map((i) => i.value) }, 'Würfel-Auswahl gespeichert.');
   const setAll = (on) => { diceBoxes.forEach((l) => { l.querySelector('input').checked = on; }); saveDiceSel(); };
-  const diceSection = section('Tag würfeln',
+  const diceSection = section('Tag würfeln', { hint: candidates.length ? `${candidates.filter((c) => c.included).length} von ${candidates.length} Tätigkeiten · ${(DICE_WEEKS.find(([w]) => w === (settings.diceWeeks || 0)) || [0, ''])[1]}` : 'Noch keine eigenen Tätigkeiten' },
     h('p', { class: 'muted small' }, 'Die Würfelfunktion schlägt Tätigkeiten anhand deiner selbst eingetragenen Tätigkeiten vor (gewürfelte zählen nicht). Hier legst du fest, welche Tätigkeiten gewürfelt werden dürfen und welcher Zeitraum für Häufigkeit und Dauer zählt.'),
     field('Zeitraum der Statistik', h('select', {
       class: 'input', 'data-testid': 'dice-weeks-setting',
@@ -250,7 +256,7 @@ export async function renderSettings(app) {
       : h('p', { class: 'small' }, 'Noch keine selbst eingetragenen Tätigkeiten.'));
 
   // ----- Darstellung -----
-  const themeSection = section('Darstellung',
+  const themeSection = section('Darstellung', { hint: { system: 'Wie System', light: 'Hell', dark: 'Dunkel' }[settings.theme] || 'Wie System' },
     field('Farbschema', h('select', {
       class: 'input',
       onchange: (ev) => save({ ...settings, theme: ev.target.value }, 'Farbschema gespeichert.'),
@@ -258,7 +264,7 @@ export async function renderSettings(app) {
     [['system', 'Wie System'], ['light', 'Hell'], ['dark', 'Dunkel']].map(([k, l]) => h('option', { value: k, selected: settings.theme === k }, l)))));
 
   // ----- Gefahrenzone -----
-  const dangerSection = section('Alle Daten löschen',
+  const dangerSection = section('Alle Daten löschen', {},
     h('p', { class: 'muted small' }, 'Löscht alle Buchungen, Tätigkeiten, Korrekturen und Einstellungen auf diesem Gerät.'),
     h('button', {
       type: 'button', class: 'btn btn-danger', onclick: () => formDialog({
@@ -279,9 +285,8 @@ export async function renderSettings(app) {
     }, 'Alle Daten löschen …'));
 
   return h('section', { class: 'view view-settings' },
-    jumpNav([['Sicherung', backupSection], ['Zeitkonto', accountSection], ['Nachweis', reportSection], ['Würfeln', diceSection], ['Speicher', storageSection], ['Darstellung', themeSection], ['Löschen', dangerSection]]),
-    h('a', { class: 'btn btn-block', href: '#/hilfe' }, '❓ Hilfe & Installationsanleitung'),
     backupSection, accountSection, reportSection, diceSection, storageSection, themeSection, dangerSection,
+    h('p', { class: 'center' }, h('a', { href: '#/hilfe' }, 'Hilfe & Installationsanleitung')),
     h('p', { class: 'muted small center' }, `Arbeitszeit v${APP_VERSION} · Datenformat ${SCHEMA_VERSION} · Gerät ${String(meta.deviceId || '').slice(0, 8)}`,
       h('br'), 'Keine Werbung, kein Tracking, keine Server – alle Daten bleiben auf diesem Gerät.'));
 }

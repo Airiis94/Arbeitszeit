@@ -30,14 +30,11 @@ function summaryCard(title, rows, pb, prevLabel) {
   return h('div', { class: 'card summary' },
     h('h2', null, title),
     h('div', { class: 'summary-grid' },
-      h('div', { class: 'sum-main' }, h('span', null, 'Arbeitszeit (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedNetMin))),
-      h('div', null, h('span', null, 'davon gestempelt'), h('b', { class: 'num' }, fmtDuration(s.netMin))),
+      h('div', { class: 'sum-main' }, h('span', null, `Arbeitszeit · ${s.workedDays} Tag${s.workedDays === 1 ? '' : 'e'}`), h('b', { class: 'num' }, fmtDuration(s.bookedNetMin))),
       s.creditMin ? h('div', { 'data-testid': 'credit-sum' }, h('span', null, 'davon Urlaub/angerechnet'), h('b', { class: 'num' }, fmtDuration(s.creditMin))) : null,
-      h('div', null, h('span', null, 'Pausen (gebucht)'), h('b', { class: 'num' }, fmtDuration(s.bookedBreakMin))),
-      h('div', null, h('span', null, 'Arbeitstage'), h('b', { class: 'num' }, String(s.workedDays))),
+      h('div', null, h('span', null, 'Pausen'), h('b', { class: 'num' }, fmtDuration(s.bookedBreakMin))),
       pb ? [
         h('div', { 'data-testid': 'carry-in' }, h('span', null, `Übertrag ${prevLabel}`), h('b', null, signed(pb.carryIn))),
-        h('div', null, h('span', null, 'Veränderung im Zeitraum (inkl. Korrekturen)'), h('b', null, signed(pb.change))),
         h('div', { class: 'sum-main', 'data-testid': 'period-end' }, h('span', null, 'Zeitkonto am Ende'), h('b', null, signed(pb.end))),
       ] : h('div', null, h('span', null, 'Zeitkonto'), h('b', null, 'beginnt später (Kontobeginn)')),
       s.open ? h('div', { class: 'neg' }, h('span', null, 'Offen/fehlerhaft'), h('b', { class: 'num' }, String(s.open))) : null));
@@ -109,17 +106,17 @@ function weekView(app, weekStart, data, acc, now, today) {
       h('td', null, r.status === 'empty' ? '' : signed(r.effect)),
       h('td', null, r.balance == null ? '' : signed(r.balance)))))),
     ),
-    legend(),
     summaryCard('Wochenübersicht', rows, periodBalance(acc, weekStart, to), 'aus der Vorwoche'),
-    h('div', { class: 'btn-col' },
+    h('div', { class: 'btn-row btn-row-tight week-actions' },
       h('button', {
-        type: 'button', class: 'btn btn-block', 'data-testid': 'week-report', onclick: () => exportReport(app, data, weekStart, to).catch(app.error),
-      }, '⬇ Ausbildungsnachweis dieser Woche (Excel)'),
-      h('a', { class: 'btn btn-block', href: `#/druck/woche/${weekStart}`, 'data-testid': 'week-print' }, '🖨 Wochentabelle drucken / als PDF'),
+        type: 'button', class: 'btn btn-small', 'data-testid': 'week-report', title: 'Ausbildungsnachweis dieser Woche als Excel-Datei',
+        onclick: () => exportReport(app, data, weekStart, to).catch(app.error),
+      }, '⬇ Nachweis'),
+      h('a', { class: 'btn btn-small', href: `#/druck/woche/${weekStart}`, 'data-testid': 'week-print', title: 'Wochentabelle drucken oder als PDF speichern' }, '🖨 Drucken'),
       h('button', {
-        type: 'button', class: 'btn btn-block', 'data-testid': 'week-vacation',
+        type: 'button', class: 'btn btn-small', 'data-testid': 'week-vacation',
         onclick: () => vacationDialog(app, weekStart <= today && today <= to ? today : weekStart, { typicalMin: typicalNetMin(acc), dayInfos: data.dayInfos }),
-      }, '🏖 Urlaub eintragen')),
+      }, '🏖 Urlaub')),
   ];
 }
 
