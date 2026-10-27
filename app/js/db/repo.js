@@ -3,7 +3,7 @@
 
 import { openDb, transact, getAll, get, put, clear, del, getAllPrefix, STORES } from './db.js';
 import { planClockAction } from '../core/state.js';
-import { validateIntervalChange } from '../core/validate.js';
+import { validateIntervalChange, breaksOfWork } from '../core/validate.js';
 import { planMerge } from '../core/backup-format.js';
 import {
   newRecord, touch, uuid, defaultSettings, normalizeSettings, COLLECTIONS, APP_VERSION,
@@ -154,10 +154,13 @@ export class Repo {
     });
   }
 
+  /** Löscht eine Buchung; bei einer Arbeitsphase auch deren Pausen (siehe breaksOfWork) – gemeinsam rückgängig zu machen. */
   async deleteInterval(id, { reason = '', now = Date.now() } = {}) {
-    const rec = await transact(this.db, ['intervals'], 'readonly', (tx) => get(tx, 'intervals', id));
+    const all = await transact(this.db, ['intervals'], 'readonly', (tx) => getAll(tx, 'intervals'));
+    const rec = all.find((i) => i.id === id);
     if (!rec || rec.deleted) throw new ValidationError(['Eintrag nicht gefunden.']);
-    return this.saveIntervals([touch(rec, { deleted: true }, now)], { reason, now });
+    const withBreaks = [rec, ...breaksOfWork(all, rec, now)];
+    return this.saveIntervals(withBreaks.map((r) => touch(r, { deleted: true }, now)), { reason, now });
   }
 
   /** Macht eine Änderung rückgängig, sofern der Datensatz seitdem nicht erneut geändert wurde. */

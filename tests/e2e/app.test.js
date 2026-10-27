@@ -178,8 +178,8 @@ test('Startseite: Arbeitszeit direkt über „Ändern“ korrigieren (eigenes Sy
   assert.match(await page.textContent('[data-testid=edit-work]'), /Ändern/);
   assert.ok(await page.$('[data-testid=edit-work] svg'), 'Symbol Uhr mit Stift');
   assert.ok(await page.$('[data-testid=edit-break]'), 'auch Pausen sind änderbar');
-  // Löschen bleibt der Tagesansicht vorbehalten
-  assert.equal(await page.$('.entry-work button[aria-label=Löschen]'), null);
+  // Löschen auch hier (z. B. versehentlich gestempelt)
+  assert.ok(await page.$('.entry-work button[aria-label=Löschen]'));
   await click('edit-work');
   await page.waitForSelector('dialog input[name=end]');
   assert.match(await page.textContent('dialog'), /Arbeitsphase bearbeiten/);
@@ -676,6 +676,26 @@ test('Fehlbuchung per „Rückgängig“ zurücknehmen', async () => {
   await waitStatus('Arbeit läuft');
   const work = (await intervals()).find((i) => i.kind === 'work');
   assert.equal(work.end, null);
+});
+
+test('Versehentlich gestempelt (Arbeit + laufende Pause): auf der Startseite löschen, Pause wird mitgelöscht', async () => {
+  await setTime(t(DAY, '23:54'));
+  await click('btn-start');
+  await waitStatus('Arbeit läuft');
+  await click('btn-pause');
+  await waitStatus('Pause läuft');
+  await setTime(t(DAY, '23:55'));
+  await page.click('.entry-work [aria-label=Löschen]');
+  await page.waitForSelector('[data-testid=delete-with-breaks]');
+  assert.match(await text('delete-with-breaks'), /Pause 23:54–läuft wird mitgelöscht/);
+  await page.click('dialog button[type=submit]');
+  await waitStatus('Nicht eingestempelt');
+  assert.deepEqual(await intervals(), []);
+  assert.equal(await page.$('.toast-error'), null);
+  // Rückgängig stellt beides wieder her
+  await page.click('.toast:has-text("gelöscht") .toast-action');
+  await waitStatus('Pause läuft');
+  assert.equal((await intervals()).length, 2);
 });
 
 test('Zusammenführen einer Sicherung überschreibt keine neueren lokalen Daten', async () => {

@@ -10,6 +10,7 @@ import { stampChoices } from '../core/booking.js';
 import { activityTemplates, filterTemplates, templateMinutes, hideTemplate, memoryKey } from '../core/memory.js';
 import { activityStats, rerollDay, diceCandidates } from '../core/dice.js';
 import { ValidationError } from '../db/repo.js';
+import { breaksOfWork } from '../core/validate.js';
 
 const err = (msg) => new ValidationError([msg]);
 
@@ -211,16 +212,23 @@ export async function quickBreak(app, day, minutes) {
   } catch (e) { app.error(e); }
 }
 
+const intervalText = (r) => (r.start != null
+  ? `${timeOfDay(r.start)}–${r.end ? timeOfDay(r.end) : 'läuft'}`
+  : `${fmtDuration(r.durationMin)} (nur Dauer)`);
+
 export async function deleteIntervalFlow(app, rec) {
   const label = rec.kind === 'work' ? 'Arbeitsphase' : 'Pause';
+  let withIt = [];
+  try { withIt = breaksOfWork((await app.repo.loadAll()).intervals, rec); } catch (e) { app.error(e); return; }
   const reason = await formDialog({
     title: `${label} löschen?`,
     submitText: 'Löschen',
     danger: true,
     build: () => [
-      h('p', null, rec.start != null
-        ? `${label} ${timeOfDay(rec.start)}–${rec.end ? timeOfDay(rec.end) : '…'} wird gelöscht.`
-        : `${label} (${fmtDuration(rec.durationMin)}) wird gelöscht.`),
+      h('p', null, `${label} ${intervalText(rec)} wird gelöscht.`),
+      withIt.length ? h('p', { class: 'notice notice-warn small', 'data-testid': 'delete-with-breaks' },
+        `Dazugehörige Pause${withIt.length === 1 ? '' : 'n'} ${withIt.map(intervalText).join(', ')} ${withIt.length === 1 ? 'wird' : 'werden'} mitgelöscht.`) : null,
+      h('p', { class: 'muted small' }, 'Mit „Rückgängig“ lässt sich das sofort wiederherstellen.'),
       reasonField(),
     ],
     onSubmit: (form) => new FormData(form).get('reason') || '',
@@ -228,7 +236,7 @@ export async function deleteIntervalFlow(app, rec) {
   if (reason === null) return;
   try {
     const res = await app.repo.deleteInterval(rec.id, { reason });
-    undoToast(app, `${label} gelöscht.`, res.changes);
+    undoToast(app, withIt.length ? `${label} und ${withIt.length === 1 ? 'Pause' : `${withIt.length} Pausen`} gelöscht.` : `${label} gelöscht.`, res.changes);
   } catch (e) { app.error(e); }
 }
 

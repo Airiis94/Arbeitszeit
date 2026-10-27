@@ -84,3 +84,21 @@ export function validateIntervalChange(allIntervals, changed, now = Date.now()) 
   for (const [k, msg] of next) if (!prev.has(k)) errors.push(msg);
   return [...new Set(errors)];
 }
+
+/**
+ * Pausen, die beim Löschen einer Arbeitsphase mitgelöscht werden müssen: Pausen mit Uhrzeit, die in dieser
+ * Arbeitsphase liegen; bleibt am Tag keine Arbeitsphase übrig, alle Pausen des Tages (auch „nur Dauer“).
+ * Sonst stünden sie ohne Arbeitsphase da und das Löschen würde abgelehnt.
+ */
+export function breaksOfWork(intervals, work, now = Date.now()) {
+  if (!work || work.kind !== 'work') return [];
+  const live = intervals.filter((i) => !i.deleted && i.day === work.day && i.id !== work.id);
+  const othersLeft = live.some((i) => i.kind === 'work');
+  return live.filter((b) => {
+    if (b.kind !== 'break') return false;
+    if (!othersLeft) return true;
+    if (b.start == null || work.start == null) return false;
+    const end = b.end ?? Math.max(b.start, now);
+    return b.start >= work.start && (work.end == null || end <= work.end);
+  });
+}
