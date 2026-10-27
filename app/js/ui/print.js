@@ -46,26 +46,46 @@ export function weekPrintSheet(rep) {
       h('div', null, h('div', { class: 'ps-line' }), 'Datum, Unterschrift des Ausbilders')));
 }
 
+const MAX_WEEKS = 53;
+
+/**
+ * Druckansicht: #/druck/woche/<Tag> – eine Woche mit Blättern vor/zurück;
+ * #/druck/woche/<von>/<bis> – alle Wochen des Zeitraums, je Woche eine A4-Seite (aus den Einstellungen).
+ */
 export async function renderPrint(app, params) {
   const data = await app.load();
+  const now = Date.now();
   const ref = isValidDayKey(params[1]) ? params[1] : todayKey();
   const weekStart = startOfWeek(ref);
-  const rep = buildWeekReport({ weekStart, ...data, now: Date.now() });
+  const range = isValidDayKey(params[2]) && params[2] >= ref;
+  const weeks = [];
+  for (let w = weekStart; weeks.length < (range ? MAX_WEEKS : 1) && w <= (range ? params[2] : weekStart); w = addDays(w, 7)) weeks.push(w);
+  const lastWeek = weeks[weeks.length - 1];
   // Vorschau wie ein PDF: ganze Seitenbreite auf den Bildschirm skalieren (Druck bleibt in Originalgröße)
-  const sheet = weekPrintSheet(rep);
   const SHEET_WIDTH = 760;
   const scale = Math.min(1, (Math.min(window.innerWidth, 760) - 24) / SHEET_WIDTH);
-  sheet.style.width = `${SHEET_WIDTH}px`;
-  if (scale < 1) sheet.style.zoom = String(Math.round(scale * 1000) / 1000);
+  const sheets = weeks.map((w) => {
+    const sheet = weekPrintSheet(buildWeekReport({ weekStart: w, ...data, now }));
+    sheet.style.width = `${SHEET_WIDTH}px`;
+    if (scale < 1) sheet.style.zoom = String(Math.round(scale * 1000) / 1000);
+    return sheet;
+  });
+  const title = range
+    ? `Nachweis KW ${isoWeek(weekStart)}${weeks.length > 1 ? `–${isoWeek(lastWeek)}` : ''} · ${weeks.length} Seite${weeks.length === 1 ? '' : 'n'}`
+    : `Wochentabelle KW ${isoWeek(weekStart)}`;
   return h('section', { class: 'view view-print' },
-    h('div', { class: 'nav-row no-print' },
-      h('a', { class: 'btn btn-small', href: `#/druck/woche/${addDays(weekStart, -7)}`, 'aria-label': 'Vorwoche' }, '‹'),
-      h('h1', { class: 'nav-title' }, `Wochentabelle KW ${isoWeek(weekStart)}`),
-      h('a', { class: 'btn btn-small', href: `#/druck/woche/${addDays(weekStart, 7)}`, 'aria-label': 'Folgewoche' }, '›')),
+    range
+      ? h('h1', { class: 'nav-title no-print' }, title)
+      : h('div', { class: 'nav-row no-print' },
+        h('a', { class: 'btn btn-small', href: `#/druck/woche/${addDays(weekStart, -7)}`, 'aria-label': 'Vorwoche' }, '‹'),
+        h('h1', { class: 'nav-title' }, title),
+        h('a', { class: 'btn btn-small', href: `#/druck/woche/${addDays(weekStart, 7)}`, 'aria-label': 'Folgewoche' }, '›')),
     h('div', { class: 'btn-row no-print' },
       h('button', { type: 'button', class: 'btn btn-primary', 'data-testid': 'print-now', onclick: () => window.print() }, '🖨 Drucken / als PDF speichern'),
-      h('button', { type: 'button', class: 'btn', onclick: () => exportReport(app, data, weekStart, addDays(weekStart, 6)).catch(app.error) }, '⬇ Excel')),
+      h('button', { type: 'button', class: 'btn', onclick: () => exportReport(app, data, weekStart, addDays(lastWeek, 6)).catch(app.error) }, '⬇ Excel')),
     h('p', { class: 'muted small no-print' }, 'Im Druckdialog „Als PDF speichern“ wählen, um die Tabelle als Datei zu sichern oder zu teilen. Vorschau mit zwei Fingern vergrößern.'),
-    h('div', { class: 'print-wrap' }, sheet),
-    h('a', { class: 'card-link no-print', href: `#/kalender/woche/${weekStart}` }, '← Zurück zur Woche'));
+    h('div', { class: 'print-wrap' }, sheets),
+    range
+      ? h('a', { class: 'card-link no-print', href: '#/einstellungen' }, '← Zurück zu den Einstellungen')
+      : h('a', { class: 'card-link no-print', href: `#/kalender/woche/${weekStart}` }, '← Zurück zur Woche'));
 }

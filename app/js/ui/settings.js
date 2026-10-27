@@ -159,8 +159,8 @@ export async function renderSettings(app) {
   const repFrom = h('input', { type: 'date', class: 'input', value: weekStart, 'data-testid': 'report-from' });
   const repTo = h('input', { type: 'date', class: 'input', value: addDays(weekStart, 6), 'data-testid': 'report-to' });
   const setRange = (from, to) => { repFrom.value = from; repTo.value = to; };
-  const reportSection = section('Ausbildungsnachweis (Excel)', { hint: report.name ? `${report.name}${report.trainingStart ? ` · ab ${fmtDate(report.trainingStart)}` : ''}` : 'Name noch nicht eingetragen' },
-    h('p', { class: 'muted small' }, 'Excel-Datei im Layout des Ausbildungsnachweises: ein Blatt pro Woche, druckfertig auf A4. Die Ausbildungsabteilung ist die Kategorie der Tätigkeit. Drucken oder PDF: Kalender → Woche → „🖨 Drucken“.'),
+  const reportSection = section('Ausbildungsnachweis', { hint: report.name ? `${report.name}${report.trainingStart ? ` · ab ${fmtDate(report.trainingStart)}` : ''}` : 'Name noch nicht eingetragen' },
+    h('p', { class: 'muted small' }, 'Im Layout des Ausbildungsnachweises: je Woche ein Blatt, druckfertig auf A4. Die Ausbildungsabteilung ist die Kategorie der Tätigkeit.'),
     h('div', { class: 'row-2' },
       field('Name', repName),
       field('Ausbildungsbeginn', repStart, 'für Nachweis-Nr. und Ausbildungsjahr')),
@@ -176,11 +176,19 @@ export async function renderSettings(app) {
       h('button', { type: 'button', class: 'chip', onclick: () => setRange(addDays(weekStart, -7), addDays(weekStart, -1)) }, 'Letzte Woche'),
       h('button', { type: 'button', class: 'chip', onclick: () => setRange(firstOfMonth(monthKey(today)), lastOfMonth(monthKey(today))) }, 'Dieser Monat')),
     h('div', { class: 'row-2' }, field('von', repFrom), field('bis', repTo)),
-    h('button', {
-      type: 'button', class: 'btn btn-primary btn-block', 'data-testid': 'export-report', onclick: () => {
-        exportReport(app, data, repFrom.value, repTo.value, { name: repName.value.trim(), trainingStart: repStart.value || null }).catch(app.error);
-      },
-    }, '⬇ Ausbildungsnachweis herunterladen (Excel)'));
+    h('div', { class: 'btn-row' },
+      h('button', {
+        type: 'button', class: 'btn btn-primary', 'data-testid': 'export-report', onclick: () => {
+          exportReport(app, data, repFrom.value, repTo.value, { name: repName.value.trim(), trainingStart: repStart.value || null }).catch(app.error);
+        },
+      }, '⬇ Excel'),
+      h('button', {
+        type: 'button', class: 'btn', 'data-testid': 'print-report', onclick: () => {
+          if (!isValidDayKey(repFrom.value) || !isValidDayKey(repTo.value) || repTo.value < repFrom.value) { app.error(err('Bitte einen gültigen Zeitraum wählen.')); return; }
+          app.navigate(`#/druck/woche/${repFrom.value}/${repTo.value}`);
+        },
+      }, '🖨 PDF')),
+    h('p', { class: 'muted small' }, 'PDF: je Woche eine A4-Seite – im Druckdialog „Als PDF speichern“ wählen oder direkt drucken.'));
 
   // ----- Zeitkonto -----
   const accountSection = section('Zeitkonto & Erfassung', { hint: `ab ${fmtDate(settings.accountStart)} · ${settings.trackingMode === 'exact' ? 'minutengenau' : `${settings.rounding?.interval || 15}-Minuten-Raster`}` },

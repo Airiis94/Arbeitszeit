@@ -791,6 +791,7 @@ textarea.input { min-height: 80px; resize: vertical; }
   .main { max-width: none; padding: 0; }
   .print-wrap { overflow: visible; margin: 0; }
   .print-sheet { width: auto !important; zoom: 1 !important; padding: 0; }
+  .print-sheet + .print-sheet { break-before: page; }
   .ps-table tr { break-inside: avoid; }
 }
 
@@ -885,3 +886,5 @@ details.more > summary { cursor: pointer; color: var(--primary); font-weight: 70
 .sec-body { padding: 0 14px 14px; }
 .sec + .sec { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) { .sec-chev { transition: none; } }
+
+.print-sheet + .print-sheet { margin-top: 16px; }

@@ -1064,6 +1064,23 @@ test('Wochentabelle: Druckansicht wie der Nachweis, druckbar als PDF auf einer A
   await page.emulateMedia({ media: 'screen' });
 });
 
+test('Einstellungen: Ausbildungsnachweis für einen Zeitraum drucken / als PDF – je Woche eine A4-Seite', async () => {
+  await workday(); // Mo 02.03.
+  await openSettings();
+  await page.fill('[data-testid=report-from]', '2026-03-02');
+  await page.fill('[data-testid=report-to]', '2026-03-13');
+  await click('print-report');
+  await page.waitForFunction(() => location.hash === '#/druck/woche/2026-03-02/2026-03-13');
+  await page.waitForSelector('[data-testid=print-sheet]');
+  assert.equal(await page.locator('[data-testid=print-sheet]').count(), 2);
+  assert.equal(await page.locator('[data-testid=print-week-total]').first().textContent(), '8,25');
+  await page.emulateMedia({ media: 'print' });
+  const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true });
+  const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+  assert.equal(pages, 2, `PDF-Seiten: ${pages}`);
+  await page.emulateMedia({ media: 'screen' });
+});
+
 async function readXlsx(download) {
   const dir = await mkdtemp(join(tmpdir(), 'az-'));
   const file = join(dir, download.suggestedFilename());
